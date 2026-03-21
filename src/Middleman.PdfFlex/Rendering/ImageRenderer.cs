@@ -1,0 +1,83 @@
+// Copyright (c) Middleman Software, Inc. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
+
+using Middleman.PdfFlex.Elements;
+using Middleman.PdfFlex.Layout;
+using PdfSharp.Drawing;
+
+namespace Middleman.PdfFlex.Rendering;
+
+/// <summary>
+/// Renders <see cref="ImageBox"/> elements by loading raster images and drawing
+/// them within the layout node bounds, preserving aspect ratio.
+/// </summary>
+internal static class ImageRenderer
+{
+    #region Public Methods
+
+    /// <summary>
+    /// Renders an image element within the specified layout node bounds.
+    /// Loads the image from a file path or byte array and scales it to fit while
+    /// preserving the original aspect ratio.
+    /// </summary>
+    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="node">The layout node positioning the image.</param>
+    /// <param name="imageBox">The image element to render.</param>
+    public static void Render(XGraphics gfx, LayoutNode node, ImageBox imageBox)
+    {
+        if (node.Width <= 0 || node.Height <= 0)
+            return;
+
+        XImage? image = null;
+        try
+        {
+            image = LoadImage(imageBox);
+            if (image == null)
+                return;
+
+            // Calculate scaled dimensions preserving aspect ratio.
+            double scaleX = node.Width / image.PixelWidth;
+            double scaleY = node.Height / image.PixelHeight;
+            double scale = Math.Min(scaleX, scaleY);
+
+            double drawWidth = image.PixelWidth * scale;
+            double drawHeight = image.PixelHeight * scale;
+
+            // Center the image within the node bounds.
+            double offsetX = node.X + ((node.Width - drawWidth) / 2.0);
+            double offsetY = node.Y + ((node.Height - drawHeight) / 2.0);
+
+            gfx.DrawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+        }
+        finally
+        {
+            image?.Dispose();
+        }
+    }
+
+    #endregion Public Methods
+
+    #region Private Methods
+
+    /// <summary>
+    /// Loads an <see cref="XImage"/> from the image box's file path or byte array data.
+    /// Returns null if the image cannot be loaded.
+    /// </summary>
+    private static XImage? LoadImage(ImageBox imageBox)
+    {
+        if (imageBox.FilePath != null)
+        {
+            return XImage.FromFile(imageBox.FilePath);
+        }
+
+        if (imageBox.ImageData is { Length: > 0 })
+        {
+            using var stream = new MemoryStream(imageBox.ImageData, writable: false);
+            return XImage.FromStream(stream);
+        }
+
+        return null;
+    }
+
+    #endregion Private Methods
+}

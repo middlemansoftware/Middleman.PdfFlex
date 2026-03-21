@@ -1,0 +1,51 @@
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+
+This project incorporates components from the projects listed below.
+
+────────────────────────────────────────
+PdfSharp 6.2.4
+License: MIT
+Source: https://github.com/empira/PDFsharp
+────────────────────────────────────────
+
+The PDF engine in Middleman.PdfFlex is based on the PdfSharp Core library
+by empira Software GmbH. PdfSharp source has been modified to fix
+cross-platform issues, add PDF/UA tagging, support streaming output,
+and integrate with the Middleman.PdfFlex layout engine.
+
+────────────────────────────────────────
+StbImageSharp 2.30.15
+License: MIT
+Source: https://github.com/StbSharp/StbImageSharp
+────────────────────────────────────────
+
+StbImageSharp (a pure C# port of stb_image.h) source is included directly
+for JPEG, PNG, BMP, TGA, GIF, and HDR image decoding with zero external
+dependencies.
+
+────────────────────────────────────────
+Google Noto Fonts
+License: Apache 2.0 (SIL Open Font License for some variants)
+Source: https://github.com/googlefonts/noto-fonts
+────────────────────────────────────────
+
+The Noto font family by Google is bundled as embedded resources for universal
+language and script coverage as a fallback when system fonts are unavailable.
+
+────────────────────────────────────────
+Microsoft.Extensions.Logging.Abstractions 10.0.5
+License: MIT
+Source: https://github.com/dotnet/runtime
+────────────────────────────────────────
+
+Logging abstractions used by the PdfSharp PDF engine. Pure managed C#,
+fully cross-platform.
+
+────────────────────────────────────────
+System.Security.Cryptography.Pkcs 10.0.5
+License: MIT
+Source: https://github.com/dotnet/runtime
+────────────────────────────────────────
+
+PKCS#7/CMS cryptographic operations used for PDF digital signature support.
+Part of the .NET platform extensions, fully cross-platform.
