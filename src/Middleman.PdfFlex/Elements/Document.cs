@@ -62,7 +62,5 @@ public class Document
         return this;
     }
 
-    // Save/ToBytes methods will be added when DocumentRenderer is implemented.
-
     #endregion Public Methods
 }

@@ -36,10 +36,11 @@ internal static class TableRenderer
         // Resolve column widths proportionally within the available table width.
         double[] columnWidths = ResolveColumnWidths(table, tableWidth);
 
-        // Determine row height from header style font size, falling back to cell style, then default.
-        double fontSize = ResolveTableFontSize(table.HeaderStyle) ?? ResolveTableFontSize(table.CellStyle) ?? 10.0;
-        double rowHeight = fontSize * 1.6;
-        double cellPadding = 4.0;
+        // Row heights incorporate vertical padding from styles for proper cell spacing.
+        double headerRowHeight = GetHeaderRowHeight(table);
+        double dataRowHeight = GetRowHeight(table);
+        double headerCellPadding = ResolveCellPadding(table.HeaderStyle);
+        double dataCellPadding = ResolveCellPadding(table.CellStyle);
 
         double cursorY = tableY;
 
@@ -52,13 +53,13 @@ internal static class TableRenderer
         if (table.HeaderStyle?.Background != null)
         {
             var bgBrush = new XSolidBrush(ColorConvert.ToXColor(table.HeaderStyle.Background.Color));
-            gfx.DrawRectangle(bgBrush, tableX, cursorY, tableWidth, rowHeight);
+            gfx.DrawRectangle(bgBrush, tableX, cursorY, tableWidth, headerRowHeight);
         }
 
-        DrawRow(gfx, table, columnWidths, tableX, cursorY, rowHeight, cellPadding,
+        DrawRow(gfx, table, columnWidths, tableX, cursorY, headerRowHeight, headerCellPadding,
             headerFont, headerBrush, isHeader: true, rowValues: null);
 
-        cursorY += rowHeight;
+        cursorY += headerRowHeight;
 
         // ── Data Rows ───────────────────────────────────────────────
         var cellFont = CreateFontFromStyle(table.CellStyle);
@@ -68,7 +69,7 @@ internal static class TableRenderer
         for (int rowIndex = 0; rowIndex < table.Rows.Count; rowIndex++)
         {
             // Stop if we exceed the layout node bounds.
-            if (cursorY + rowHeight > node.Y + node.Height + 0.5)
+            if (cursorY + dataRowHeight > node.Y + node.Height + 0.5)
                 break;
 
             bool isAlternate = rowIndex % 2 == 1;
@@ -81,26 +82,193 @@ internal static class TableRenderer
             if (bgStyle?.Background != null)
             {
                 var bgBrush = new XSolidBrush(ColorConvert.ToXColor(bgStyle.Background.Color));
-                gfx.DrawRectangle(bgBrush, tableX, cursorY, tableWidth, rowHeight);
+                gfx.DrawRectangle(bgBrush, tableX, cursorY, tableWidth, dataRowHeight);
             }
 
-            DrawRow(gfx, table, columnWidths, tableX, cursorY, rowHeight, cellPadding,
+            DrawRow(gfx, table, columnWidths, tableX, cursorY, dataRowHeight, dataCellPadding,
                 cellFont, cellBrush, isHeader: false, rowValues: table.Rows[rowIndex]);
 
-            cursorY += rowHeight;
+            cursorY += dataRowHeight;
         }
 
         // ── Borders ─────────────────────────────────────────────────
         if (table.Border != null)
         {
             DrawBorders(gfx, table.Border, table, columnWidths, tableX, tableY,
-                tableWidth, cursorY - tableY, rowHeight);
+                tableWidth, cursorY - tableY, headerRowHeight, dataRowHeight);
         }
+    }
+
+    /// <summary>
+    /// Renders a segment of a table (a subset of data rows) at the specified position.
+    /// Used by the pagination system to split tables across multiple pages, with header
+    /// repetition and optional continuation text.
+    /// </summary>
+    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="table">The table element to render.</param>
+    /// <param name="x">The left X position of the table segment.</param>
+    /// <param name="y">The top Y position of the table segment.</param>
+    /// <param name="width">The available width for the table segment.</param>
+    /// <param name="startRow">The zero-based index of the first data row to render (inclusive).</param>
+    /// <param name="endRow">The zero-based index of the last data row to render (exclusive).</param>
+    /// <param name="isContinuation">
+    /// When <see langword="true"/>, the header is rendered with continuation text
+    /// prepended to the first column header if <see cref="Table.ContinuationText"/> is set.
+    /// </param>
+    /// <param name="includeFooter">
+    /// When <see langword="true"/>, the table's footer row is rendered after the last data row.
+    /// </param>
+    public static void RenderSegment(
+        XGraphics gfx,
+        Table table,
+        double x,
+        double y,
+        double width,
+        int startRow,
+        int endRow,
+        bool isContinuation,
+        bool includeFooter = false)
+    {
+        if (table.Columns.Count == 0)
+            return;
+
+        double[] columnWidths = ResolveColumnWidths(table, width);
+
+        double headerRowHeight = GetHeaderRowHeight(table);
+        double dataRowHeight = GetRowHeight(table);
+        double headerCellPadding = ResolveCellPadding(table.HeaderStyle);
+        double dataCellPadding = ResolveCellPadding(table.CellStyle);
+
+        double cursorY = y;
+
+        // ── Header Row ──────────────────────────────────────────────
+        var headerFont = CreateFontFromStyle(table.HeaderStyle, fallbackWeight: FontWeight.Bold);
+        var headerColor = table.HeaderStyle?.FontColor ?? Colors.Black;
+        var headerBrush = new XSolidBrush(ColorConvert.ToXColor(headerColor));
+
+        if (table.HeaderStyle?.Background != null)
+        {
+            var bgBrush = new XSolidBrush(ColorConvert.ToXColor(table.HeaderStyle.Background.Color));
+            gfx.DrawRectangle(bgBrush, x, cursorY, width, headerRowHeight);
+        }
+
+        DrawHeaderRow(gfx, table, columnWidths, x, cursorY, headerRowHeight, headerCellPadding,
+            headerFont, headerBrush, isContinuation);
+
+        cursorY += headerRowHeight;
+
+        // ── Data Rows ───────────────────────────────────────────────
+        var cellFont = CreateFontFromStyle(table.CellStyle);
+        var cellColor = table.CellStyle?.FontColor ?? Colors.Black;
+        var cellBrush = new XSolidBrush(ColorConvert.ToXColor(cellColor));
+
+        for (int rowIndex = startRow; rowIndex < endRow && rowIndex < table.Rows.Count; rowIndex++)
+        {
+            bool isAlternate = rowIndex % 2 == 1;
+            var rowStyle = isAlternate && table.AlternateRowStyle != null
+                ? table.AlternateRowStyle
+                : table.RowStyle;
+
+            var bgStyle = rowStyle ?? (isAlternate ? table.AlternateRowStyle : null);
+            if (bgStyle?.Background != null)
+            {
+                var bgBrush = new XSolidBrush(ColorConvert.ToXColor(bgStyle.Background.Color));
+                gfx.DrawRectangle(bgBrush, x, cursorY, width, dataRowHeight);
+            }
+
+            DrawRow(gfx, table, columnWidths, x, cursorY, dataRowHeight, dataCellPadding,
+                cellFont, cellBrush, isHeader: false, rowValues: table.Rows[rowIndex]);
+
+            cursorY += dataRowHeight;
+        }
+
+        // ── Footer Row ──────────────────────────────────────────────
+        if (includeFooter && table.FooterRow != null)
+        {
+            double footerCellPadding = ResolveCellPadding(table.FooterStyle);
+            double footerRowHeight = GetFooterRowHeight(table);
+
+            var footerFont = CreateFontFromStyle(table.FooterStyle, fallbackWeight: FontWeight.Bold);
+            var footerColor = table.FooterStyle?.FontColor ?? Colors.Black;
+            var footerBrush = new XSolidBrush(ColorConvert.ToXColor(footerColor));
+
+            if (table.FooterStyle?.Background != null)
+            {
+                var bgBrush = new XSolidBrush(ColorConvert.ToXColor(table.FooterStyle.Background.Color));
+                gfx.DrawRectangle(bgBrush, x, cursorY, width, footerRowHeight);
+            }
+
+            DrawRow(gfx, table, columnWidths, x, cursorY, footerRowHeight, footerCellPadding,
+                footerFont, footerBrush, isHeader: false, rowValues: table.FooterRow);
+
+            cursorY += footerRowHeight;
+        }
+
+        // ── Borders ─────────────────────────────────────────────────
+        if (table.Border != null)
+        {
+            DrawBorders(gfx, table.Border, table, columnWidths, x, y,
+                width, cursorY - y, headerRowHeight, dataRowHeight);
+        }
+    }
+
+    /// <summary>
+    /// Returns the computed data row height for a table, including vertical padding
+    /// from the cell style.
+    /// </summary>
+    /// <param name="table">The table element.</param>
+    /// <returns>The data row height in points.</returns>
+    public static double GetRowHeight(Table table)
+    {
+        double fontSize = ResolveTableFontSize(table.CellStyle) ?? ResolveTableFontSize(table.HeaderStyle) ?? 10.0;
+        double baseHeight = fontSize * 1.6;
+        double verticalPadding = table.CellStyle?.Padding?.VerticalTotal ?? 0;
+        return baseHeight + verticalPadding;
+    }
+
+    /// <summary>
+    /// Returns the computed header row height for a table, including vertical padding
+    /// from the header style.
+    /// </summary>
+    /// <param name="table">The table element.</param>
+    /// <returns>The header row height in points.</returns>
+    public static double GetHeaderRowHeight(Table table)
+    {
+        double fontSize = ResolveTableFontSize(table.HeaderStyle) ?? ResolveTableFontSize(table.CellStyle) ?? 10.0;
+        double baseHeight = fontSize * 1.6;
+        double verticalPadding = table.HeaderStyle?.Padding?.VerticalTotal ?? 0;
+        return baseHeight + verticalPadding;
+    }
+
+    /// <summary>
+    /// Returns the computed footer row height for a table, including vertical padding
+    /// from the footer style. Falls back to data row height if no footer style is set.
+    /// </summary>
+    /// <param name="table">The table element.</param>
+    /// <returns>The footer row height in points.</returns>
+    public static double GetFooterRowHeight(Table table)
+    {
+        if (table.FooterStyle == null)
+            return GetRowHeight(table);
+
+        double fontSize = ResolveTableFontSize(table.FooterStyle) ?? ResolveTableFontSize(table.CellStyle) ?? 10.0;
+        double baseHeight = fontSize * 1.6;
+        double verticalPadding = table.FooterStyle.Padding?.VerticalTotal ?? 0;
+        return baseHeight + verticalPadding;
     }
 
     #endregion Public Methods
 
     #region Private Methods
+
+    /// <summary>
+    /// Resolves the horizontal cell padding from a style's padding, falling back to
+    /// a default of 4pt when no padding is specified.
+    /// </summary>
+    private static double ResolveCellPadding(Style? style)
+    {
+        return style?.Padding?.Left ?? 4.0;
+    }
 
     /// <summary>
     /// Resolves column widths from the table's column definitions. Absolute widths are
@@ -160,6 +328,48 @@ internal static class TableRenderer
     }
 
     /// <summary>
+    /// Draws a header row with optional continuation text prepended to the first column.
+    /// </summary>
+    private static void DrawHeaderRow(
+        XGraphics gfx,
+        Table table,
+        double[] columnWidths,
+        double rowX,
+        double rowY,
+        double rowHeight,
+        double cellPadding,
+        XFont font,
+        XSolidBrush brush,
+        bool isContinuation)
+    {
+        double cellX = rowX;
+
+        for (int col = 0; col < table.Columns.Count; col++)
+        {
+            string cellText = table.Columns[col].Header;
+
+            // Prepend continuation text to the first column header on continuation pages.
+            if (isContinuation && col == 0 && table.ContinuationText != null)
+            {
+                cellText = table.ContinuationText + " " + cellText;
+            }
+
+            var align = table.Columns[col].Align;
+            var format = MapTextAlign(align);
+
+            var cellRect = new XRect(
+                cellX + cellPadding,
+                rowY,
+                Math.Max(0, columnWidths[col] - (cellPadding * 2)),
+                rowHeight);
+
+            gfx.DrawString(cellText, font, brush, cellRect, format);
+
+            cellX += columnWidths[col];
+        }
+    }
+
+    /// <summary>
     /// Draws a single row of cells (either header or data).
     /// </summary>
     private static void DrawRow(
@@ -210,7 +420,8 @@ internal static class TableRenderer
         double tableY,
         double tableWidth,
         double tableHeight,
-        double rowHeight)
+        double headerRowHeight,
+        double dataRowHeight)
     {
         // Use the top border side's properties for all grid lines (simple approach).
         var side = border.Top;
@@ -222,11 +433,11 @@ internal static class TableRenderer
         // Outer rectangle.
         gfx.DrawRectangle(pen, tableX, tableY, tableWidth, tableHeight);
 
-        // Horizontal row dividers.
+        // Horizontal row dividers. The first divider separates header from data rows.
         int totalRows = 1 + table.Rows.Count; // header + data rows
         for (int row = 1; row < totalRows; row++)
         {
-            double y = tableY + (row * rowHeight);
+            double y = tableY + headerRowHeight + ((row - 1) * dataRowHeight);
             if (y < tableY + tableHeight)
             {
                 gfx.DrawLine(pen, tableX, y, tableX + tableWidth, y);

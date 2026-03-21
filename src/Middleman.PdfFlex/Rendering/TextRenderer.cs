@@ -18,7 +18,8 @@ internal static class TextRenderer
 
     /// <summary>
     /// Renders a <see cref="TextBlock"/> element within the bounds of the specified layout node.
-    /// Supports explicit newline splitting and horizontal text alignment.
+    /// Uses word wrapping to break text into lines that fit within the node's width,
+    /// matching the layout engine's text measurement.
     /// </summary>
     /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
     /// <param name="node">The layout node positioning the text.</param>
@@ -35,24 +36,26 @@ internal static class TextRenderer
         var format = CreateStringFormat(textAlign);
 
         double lineHeight = font.GetHeight();
-        var lines = textBlock.Text.Split('\n');
+
+        // Use the same word-wrapping logic as the layout engine to ensure
+        // rendered text matches the measured height.
+        var wrapResult = TextMeasurer.WrapTextBlock(textBlock, node.Width);
         double cursorY = node.Y;
 
-        for (int i = 0; i < lines.Length; i++)
+        for (int i = 0; i < wrapResult.Lines.Count; i++)
         {
-            string line = lines[i];
             if (cursorY + lineHeight > node.Y + node.Height + 0.5)
                 break;
 
             var lineRect = new XRect(node.X, cursorY, node.Width, lineHeight);
-            gfx.DrawString(line, font, brush, lineRect, format);
+            gfx.DrawString(wrapResult.Lines[i], font, brush, lineRect, format);
             cursorY += lineHeight;
         }
     }
 
     /// <summary>
-    /// Renders a <see cref="RichText"/> element by iterating its spans, applying per-span
-    /// font and color styling, and drawing each segment sequentially.
+    /// Renders a <see cref="RichText"/> element using word-wrapping across span boundaries.
+    /// Each line is rendered by drawing its span segments sequentially with per-span styling.
     /// </summary>
     /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
     /// <param name="node">The layout node positioning the rich text.</param>
@@ -62,60 +65,56 @@ internal static class TextRenderer
         if (richText.Spans.Count == 0)
             return;
 
-        var textAlign = ResolveTextAlign(richText);
-        double cursorX = node.X;
-        double cursorY = node.Y;
+        // Pre-calculate the line height as the tallest span's line height.
         double maxLineHeight = 0;
-
-        // Pre-calculate the first line height for baseline alignment.
-        foreach (var span in richText.Spans)
+        for (int i = 0; i < richText.Spans.Count; i++)
         {
-            var spanFont = Rendering.FontHelper.CreateFontFromSpan(span.Style, richText);
+            var spanFont = Rendering.FontHelper.CreateFontFromSpan(richText.Spans[i].Style, richText);
             double spanLineHeight = spanFont.GetHeight();
             if (spanLineHeight > maxLineHeight)
                 maxLineHeight = spanLineHeight;
         }
 
-        foreach (var span in richText.Spans)
+        // Use the same word-wrapping logic as the layout engine.
+        var wrapResult = TextMeasurer.WrapRichText(richText, node.Width);
+
+        double cursorY = node.Y;
+
+        for (int lineIdx = 0; lineIdx < wrapResult.Lines.Count; lineIdx++)
         {
-            if (string.IsNullOrEmpty(span.Text))
-                continue;
+            if (cursorY + maxLineHeight > node.Y + node.Height + 0.5)
+                break;
 
-            var spanFont = Rendering.FontHelper.CreateFontFromSpan(span.Style, richText);
-            var spanColor = span.Style?.FontColor ?? StyleResolver.GetFontColor(richText);
-            var spanBrush = new XSolidBrush(ColorConvert.ToXColor(spanColor));
-            var spanSize = gfx.MeasureString(span.Text, spanFont);
+            double cursorX = node.X;
+            var line = wrapResult.Lines[lineIdx];
 
-            // Handle explicit newlines within a span.
-            var segments = span.Text.Split('\n');
-            for (int i = 0; i < segments.Length; i++)
+            for (int segIdx = 0; segIdx < line.Count; segIdx++)
             {
-                if (i > 0)
-                {
-                    // Newline: advance Y, reset X.
-                    cursorX = node.X;
-                    cursorY += maxLineHeight;
-                }
+                var segment = line[segIdx];
+                var spanFont = Rendering.FontHelper.CreateFontFromSpan(segment.Span.Style, richText);
+                var spanColor = segment.Span.Style?.FontColor ?? StyleResolver.GetFontColor(richText);
+                var spanBrush = new XSolidBrush(ColorConvert.ToXColor(spanColor));
 
-                if (cursorY + maxLineHeight > node.Y + node.Height + 0.5)
-                    break;
-
-                string segment = segments[i];
-                if (segment.Length == 0)
-                    continue;
-
-                var segSize = gfx.MeasureString(segment, spanFont);
-
-                // Simple overflow: if the segment exceeds the available width, clip it.
-                // Full word-wrapping across span boundaries is a future enhancement.
+                // Use TextMeasurer's measurement context for positioning to match
+                // the layout engine's measurements and avoid DPI/transform drift.
+                var segSize = TextMeasurer.MeasureString(segment.Text, spanFont);
                 var segRect = new XRect(cursorX, cursorY, segSize.Width, maxLineHeight);
-                gfx.DrawString(segment, spanFont, spanBrush, segRect, XStringFormats.TopLeft);
+                gfx.DrawString(segment.Text, spanFont, spanBrush, segRect, XStringFormats.TopLeft);
 
                 // Draw underline or strikethrough decorations.
-                RenderDecorations(gfx, span.Style, spanFont, spanBrush, cursorX, cursorY, segSize.Width, maxLineHeight);
+                RenderDecorations(gfx, segment.Span.Style, spanFont, spanBrush,
+                    cursorX, cursorY, segSize.Width, maxLineHeight);
 
                 cursorX += segSize.Width;
+
+                // Add a space between segments on the same line (words were split on spaces).
+                if (segIdx < line.Count - 1)
+                {
+                    cursorX += TextMeasurer.MeasureString(" ", spanFont).Width;
+                }
             }
+
+            cursorY += maxLineHeight;
         }
     }
 

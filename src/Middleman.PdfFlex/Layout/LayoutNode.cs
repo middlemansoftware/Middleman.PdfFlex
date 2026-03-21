@@ -14,10 +14,10 @@ public class LayoutNode
     /// <summary>Gets the source element that produced this layout node.</summary>
     public Element Source { get; }
 
-    /// <summary>Gets or sets the X position in points, relative to the parent.</summary>
+    /// <summary>Gets or sets the absolute X position in points.</summary>
     public double X { get; set; }
 
-    /// <summary>Gets or sets the Y position in points, relative to the parent.</summary>
+    /// <summary>Gets or sets the absolute Y position in points.</summary>
     public double Y { get; set; }
 
     /// <summary>Gets or sets the computed width in points.</summary>
@@ -31,6 +31,17 @@ public class LayoutNode
 
     /// <summary>Gets the child layout nodes.</summary>
     public List<LayoutNode> Children { get; }
+
+    /// <summary>
+    /// Cached text wrap result from <see cref="TextMeasurer"/>. Populated during
+    /// <c>ResolveTextWrapping</c> and reused by <c>GetWrappedHeight</c> to avoid
+    /// redundant text measurement at the same width.
+    /// </summary>
+    /// <remarks>
+    /// Typed as <see cref="object"/> because it may hold either a <see cref="TextWrapResult"/>
+    /// or a <see cref="RichTextWrapResult"/> depending on the source element type.
+    /// </remarks>
+    internal object? CachedWrapResult { get; set; }
 
     /// <summary>Creates a layout node for the specified source element.</summary>
     /// <param name="source">The element that this layout node represents.</param>

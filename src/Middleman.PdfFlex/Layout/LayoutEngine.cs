@@ -21,7 +21,8 @@ public static class LayoutEngine
     #region Public Methods
 
     /// <summary>
-    /// Calculates the complete layout for an element tree within the given available space.
+    /// Calculates the complete layout for an element tree within the given available space,
+    /// with all positions starting at the origin (0, 0).
     /// </summary>
     /// <param name="element">The root element of the tree to lay out.</param>
     /// <param name="availableWidth">The available width in points.</param>
@@ -29,12 +30,29 @@ public static class LayoutEngine
     /// <returns>The root <see cref="LayoutNode"/> with resolved positions and sizes for the entire tree.</returns>
     public static LayoutNode Calculate(Element element, double availableWidth, double availableHeight)
     {
+        return Calculate(element, availableWidth, availableHeight, 0, 0);
+    }
+
+    /// <summary>
+    /// Calculates the complete layout for an element tree within the given available space,
+    /// with all positions offset by the specified origin. Use this to apply document margins
+    /// so the entire coordinate tree starts at the correct page position.
+    /// </summary>
+    /// <param name="element">The root element of the tree to lay out.</param>
+    /// <param name="availableWidth">The available width in points.</param>
+    /// <param name="availableHeight">The available height in points.</param>
+    /// <param name="originX">The X origin offset in points (e.g., left margin).</param>
+    /// <param name="originY">The Y origin offset in points (e.g., top margin).</param>
+    /// <returns>The root <see cref="LayoutNode"/> with resolved positions and sizes for the entire tree.</returns>
+    public static LayoutNode Calculate(Element element, double availableWidth, double availableHeight,
+        double originX, double originY)
+    {
         ArgumentNullException.ThrowIfNull(element);
 
         var node = new LayoutNode(element);
         var intrinsic = Measure(node, element);
         Resolve(node, element, availableWidth, availableHeight, intrinsic);
-        Position(node, 0, 0);
+        Position(node, originX, originY);
         return node;
     }
 
@@ -69,12 +87,13 @@ public static class LayoutEngine
     }
 
     /// <summary>
-    /// Measures a TextBlock using the character-count approximation.
+    /// Measures a TextBlock using real font metrics via <see cref="TextMeasurer"/>.
+    /// Reports the unwrapped single-line intrinsic size; word-wrapping is applied
+    /// later during the Resolve phase when the constrained width is known.
     /// </summary>
     private static (double Width, double Height) MeasureTextBlock(TextBlock tb)
     {
-        double fontSize = StyleResolver.GetFontSize(tb);
-        return (tb.EstimateWidth(fontSize), tb.EstimateHeight(fontSize));
+        return TextMeasurer.MeasureSingleLine(tb);
     }
 
     /// <summary>
@@ -174,21 +193,13 @@ public static class LayoutEngine
     }
 
     /// <summary>
-    /// Measures a RichText element by estimating width from the sum of span text lengths.
+    /// Measures a RichText element using real font metrics via <see cref="TextMeasurer"/>.
+    /// Reports the unwrapped single-line intrinsic size; word-wrapping is applied
+    /// later during the Resolve phase when the constrained width is known.
     /// </summary>
     private static (double Width, double Height) MeasureRichText(RichText rt)
     {
-        double fontSize = StyleResolver.GetFontSize(rt);
-        double totalChars = 0;
-
-        for (int i = 0; i < rt.Spans.Count; i++)
-        {
-            totalChars += rt.Spans[i].Text.Length;
-        }
-
-        double width = totalChars * fontSize * 0.5;
-        double height = fontSize * 1.2;
-        return (width, height);
+        return TextMeasurer.MeasureRichTextSingleLine(rt);
     }
 
     /// <summary>
@@ -262,6 +273,14 @@ public static class LayoutEngine
         // Clamp to min/max constraints if set.
         ClampToMinMax(node, element, availableWidth, availableHeight);
 
+        // After the width is resolved, re-measure text elements at the constrained width
+        // to determine the wrapped height. Only override height when no explicit height is set,
+        // so user-specified heights are respected.
+        if (element.Style?.Height == null)
+        {
+            ResolveTextWrapping(node, element);
+        }
+
         switch (element)
         {
             case Box box:
@@ -280,6 +299,68 @@ public static class LayoutEngine
                 else if (!d.IsVertical && element.Style?.Width == null)
                     node.Width = availableWidth;
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Re-measures text elements at their resolved constrained width to compute the
+    /// wrapped height. Called after the node's width is set but before children are resolved.
+    /// Only adjusts height for text elements whose content wraps to multiple lines.
+    /// </summary>
+    private static void ResolveTextWrapping(LayoutNode node, Element element)
+    {
+        switch (element)
+        {
+            case TextBlock tb when !string.IsNullOrEmpty(tb.Text):
+            {
+                var wrapResult = TextMeasurer.WrapTextBlock(tb, node.Width);
+                node.CachedWrapResult = wrapResult;
+                if (wrapResult.TotalHeight > 0)
+                    node.Height = wrapResult.TotalHeight;
+                break;
+            }
+
+            case RichText rt when rt.Spans.Count > 0:
+            {
+                var wrapResult = TextMeasurer.WrapRichText(rt, node.Width);
+                node.CachedWrapResult = wrapResult;
+                if (wrapResult.TotalHeight > 0)
+                    node.Height = wrapResult.TotalHeight;
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the wrapped height of a text element at its current resolved width,
+    /// or the original height if the element is not a text type.
+    /// </summary>
+    private static double GetWrappedHeight(LayoutNode node, Element element, double fallbackHeight)
+    {
+        switch (element)
+        {
+            case TextBlock tb when !string.IsNullOrEmpty(tb.Text):
+            {
+                if (node.CachedWrapResult is TextWrapResult cached)
+                    return cached.TotalHeight > 0 ? cached.TotalHeight : fallbackHeight;
+
+                var wrapResult = TextMeasurer.WrapTextBlock(tb, node.Width);
+                node.CachedWrapResult = wrapResult;
+                return wrapResult.TotalHeight > 0 ? wrapResult.TotalHeight : fallbackHeight;
+            }
+
+            case RichText rt when rt.Spans.Count > 0:
+            {
+                if (node.CachedWrapResult is RichTextWrapResult cached)
+                    return cached.TotalHeight > 0 ? cached.TotalHeight : fallbackHeight;
+
+                var wrapResult = TextMeasurer.WrapRichText(rt, node.Width);
+                node.CachedWrapResult = wrapResult;
+                return wrapResult.TotalHeight > 0 ? wrapResult.TotalHeight : fallbackHeight;
+            }
+
+            default:
+                return fallbackHeight;
         }
     }
 
@@ -320,7 +401,13 @@ public static class LayoutEngine
     /// <summary>
     /// Resolves a Box's single child within the box's content area (after padding/border).
     /// </summary>
-    private static void ResolveBox(LayoutNode node, Box box)
+    /// <param name="node">The Box's layout node.</param>
+    /// <param name="box">The Box element.</param>
+    /// <param name="measureOnly">
+    /// When <see langword="true"/>, performs a measurement-only pass that skips cross-axis
+    /// stretch so the caller can determine content-based height without circular dependency.
+    /// </param>
+    private static void ResolveBox(LayoutNode node, Box box, bool measureOnly = false)
     {
         if (box.Child == null || node.Children.Count == 0)
             return;
@@ -340,7 +427,14 @@ public static class LayoutEngine
     /// <summary>
     /// Resolves children of a Row within its content area, applying flex-grow/shrink.
     /// </summary>
-    private static void ResolveRow(LayoutNode node, Row row)
+    /// <param name="node">The Row's layout node.</param>
+    /// <param name="row">The Row element.</param>
+    /// <param name="measureOnly">
+    /// When <see langword="true"/>, performs a measurement-only pass that skips cross-axis
+    /// stretch (height) so the caller can determine content-based height without circular
+    /// dependency. Width stretch on the main axis still applies.
+    /// </param>
+    private static void ResolveRow(LayoutNode node, Row row, bool measureOnly = false)
     {
         if (row.Children.Count == 0)
             return;
@@ -351,7 +445,14 @@ public static class LayoutEngine
         double contentH = Math.Max(0, node.Height - padding.VerticalTotal - borderWidths.VerticalTotal);
         double totalGap = row.Gap * Math.Max(0, row.Children.Count - 1);
 
-        // First pass: resolve each child's intrinsic width within the content area.
+        // First pass: allocate main-axis widths following the Yoga/Flexbox algorithm:
+        //   1. Children with explicit width get that exact size.
+        //   2. Non-flex children (flex-grow == 0) get their intrinsic measured width.
+        //   3. Flex-grow children start at 0 (flex-basis: 0) — they receive space
+        //      only from the surplus after non-flex children are allocated.
+        // This ensures non-flex children keep their natural width and flex-grow
+        // children fill the remaining space, rather than all children competing
+        // for intrinsic space and triggering unwanted flex-shrink.
         var elements = new List<Element>(row.Children.Count);
         var intrinsics = new List<(double Width, double Height)>(row.Children.Count);
         double totalChildWidth = 0;
@@ -365,8 +466,24 @@ public static class LayoutEngine
             var childIntrinsic = MeasureIntrinsic(childNode, childElement);
             intrinsics.Add(childIntrinsic);
 
-            // Resolve child width using style or intrinsic.
-            double childW = StyleResolver.ResolveLength(childElement.Style?.Width, contentW, childIntrinsic.Width);
+            double childW;
+            if (childElement.Style?.Width != null)
+            {
+                // Explicit width: use the resolved value.
+                childW = StyleResolver.ResolveLength(childElement.Style.Width, contentW, childIntrinsic.Width);
+            }
+            else if (StyleResolver.GetFlexGrow(childElement) > 0)
+            {
+                // Flex-grow item with no explicit width: start at 0 (flex-basis: 0).
+                // It will receive its width from surplus distribution below.
+                childW = 0;
+            }
+            else
+            {
+                // Non-flex item with no explicit width: use intrinsic measured width.
+                childW = childIntrinsic.Width;
+            }
+
             childNode.Width = childW;
             totalChildWidth += childW;
         }
@@ -384,34 +501,66 @@ public static class LayoutEngine
             FlexResolver.DistributeShrink(node.Children, elements, -delta, isHorizontal: true);
         }
 
-        // Resolve each child's height (cross axis).
+        // Resolve each child's height (cross axis). For text elements, re-measure
+        // at the resolved width to get the wrapped height before applying cross-axis sizing.
+        // For container children without explicit height, do a measurement resolve to get
+        // accurate content-based height (accounts for text wrapping at constrained widths).
         for (int i = 0; i < node.Children.Count; i++)
         {
             var childNode = node.Children[i];
             var childElement = elements[i];
             var childIntrinsic = intrinsics[i];
 
+            // Re-measure text at constrained width to get wrapped height.
+            double wrappedHeight = childIntrinsic.Height;
+            if (childElement.Style?.Height == null)
+            {
+                wrappedHeight = GetWrappedHeight(childNode, childElement, childIntrinsic.Height);
+
+                // For container children, do a measurement resolve to get accurate
+                // content-based height that accounts for text wrapping.
+                if (childElement is Container or Box)
+                {
+                    childNode.Height = 1e6;
+                    ResolveChildren(childNode, childElement, measureOnly: true);
+                    wrappedHeight = ComputeContentHeight(childNode, childElement);
+                    // Invalidate cached wrap results since widths may differ on final pass.
+                    InvalidateCachedWrapResults(childNode);
+                }
+            }
+
             double childH;
-            if (row.Align == Align.Stretch && childElement.Style?.Height == null)
+            if (!measureOnly && row.Align == Align.Stretch && childElement.Style?.Height == null)
             {
                 childH = contentH;
             }
             else
             {
-                childH = StyleResolver.ResolveLength(childElement.Style?.Height, contentH, childIntrinsic.Height);
+                childH = StyleResolver.ResolveLength(childElement.Style?.Height, contentH, wrappedHeight);
             }
 
             childNode.Height = childH;
 
-            // Recursively resolve grandchildren.
-            ResolveChildren(childNode, childElement);
+            // Recursively resolve grandchildren (final layout pass).
+            ResolveChildren(childNode, childElement, measureOnly);
         }
     }
 
     /// <summary>
     /// Resolves children of a Column within its content area, applying flex-grow/shrink.
+    /// Container children are resolved in a measurement pass before heights are computed,
+    /// following the Yoga/Flexbox pattern of resolving children for measurement before
+    /// computing parent heights. This ensures text wrapping at constrained widths produces
+    /// accurate heights for flex distribution.
     /// </summary>
-    private static void ResolveColumn(LayoutNode node, Column col)
+    /// <param name="node">The Column's layout node.</param>
+    /// <param name="col">The Column element.</param>
+    /// <param name="measureOnly">
+    /// When <see langword="true"/>, performs a measurement-only pass. Width stretch on
+    /// the cross axis still applies (needed for text wrapping), but heights are
+    /// content-based rather than stretched.
+    /// </param>
+    private static void ResolveColumn(LayoutNode node, Column col, bool measureOnly = false)
     {
         if (col.Children.Count == 0)
             return;
@@ -426,6 +575,9 @@ public static class LayoutEngine
         var intrinsics = new List<(double Width, double Height)>(col.Children.Count);
         double totalChildHeight = 0;
 
+        // Phase A: Set cross-axis widths and resolve children to get content-based heights.
+        // Container children get a measurement resolve so text wrapping at constrained
+        // widths produces accurate heights before flex distribution.
         for (int i = 0; i < node.Children.Count; i++)
         {
             var childNode = node.Children[i];
@@ -433,33 +585,8 @@ public static class LayoutEngine
             elements.Add(childElement);
 
             var childIntrinsic = MeasureIntrinsic(childNode, childElement);
-            intrinsics.Add(childIntrinsic);
 
-            double childH = StyleResolver.ResolveLength(childElement.Style?.Height, contentH, childIntrinsic.Height);
-            childNode.Height = childH;
-            totalChildHeight += childH;
-        }
-
-        // Flex grow/shrink on the main axis (vertical).
-        double spaceForChildren = contentH - totalGap;
-        double delta = spaceForChildren - totalChildHeight;
-
-        if (delta > 0)
-        {
-            FlexResolver.DistributeGrow(node.Children, elements, delta, isHorizontal: false);
-        }
-        else if (delta < 0)
-        {
-            FlexResolver.DistributeShrink(node.Children, elements, -delta, isHorizontal: false);
-        }
-
-        // Resolve each child's width (cross axis).
-        for (int i = 0; i < node.Children.Count; i++)
-        {
-            var childNode = node.Children[i];
-            var childElement = elements[i];
-            var childIntrinsic = intrinsics[i];
-
+            // Pre-resolve the child's width (cross axis) so text wrapping can use it.
             double childW;
             if (col.Align == Align.Stretch && childElement.Style?.Width == null)
             {
@@ -472,8 +599,63 @@ public static class LayoutEngine
 
             childNode.Width = childW;
 
-            // Recursively resolve grandchildren.
-            ResolveChildren(childNode, childElement);
+            // Compute effective height following the Yoga/Flexbox algorithm:
+            //   - Children with explicit height get that exact size.
+            //   - Flex-grow children (on the main axis) start at 0.
+            //   - Non-flex children get their content-based height.
+            double effectiveHeight;
+            if (childElement.Style?.Height != null)
+            {
+                effectiveHeight = StyleResolver.ResolveLength(childElement.Style.Height, contentH, childIntrinsic.Height);
+            }
+            else if (StyleResolver.GetFlexGrow(childElement) > 0)
+            {
+                // Flex-grow item: start at 0 (flex-basis: 0) on the main axis.
+                effectiveHeight = 0;
+            }
+            else
+            {
+                // Non-flex item: compute content-based height.
+                effectiveHeight = GetWrappedHeight(childNode, childElement, childIntrinsic.Height);
+
+                // For container children, do a measurement resolve to get accurate
+                // content-based height that accounts for nested text wrapping.
+                if (childElement is Container or Box)
+                {
+                    childNode.Height = 1e6;
+                    ResolveChildren(childNode, childElement, measureOnly: true);
+                    effectiveHeight = ComputeContentHeight(childNode, childElement);
+                    InvalidateCachedWrapResults(childNode);
+                }
+            }
+
+            intrinsics.Add((childIntrinsic.Width, effectiveHeight));
+
+            childNode.Height = effectiveHeight;
+            totalChildHeight += effectiveHeight;
+        }
+
+        // Phase B: Flex grow/shrink on the main axis (vertical).
+        double spaceForChildren = contentH - totalGap;
+        double delta = spaceForChildren - totalChildHeight;
+
+        if (delta > 0)
+        {
+            FlexResolver.DistributeGrow(node.Children, elements, delta, isHorizontal: false);
+        }
+        else if (delta < 0)
+        {
+            FlexResolver.DistributeShrink(node.Children, elements, -delta, isHorizontal: false);
+        }
+
+        // Phase C: Final resolve pass. Widths are already set above.
+        for (int i = 0; i < node.Children.Count; i++)
+        {
+            var childNode = node.Children[i];
+            var childElement = elements[i];
+
+            // Recursively resolve grandchildren (final layout pass).
+            ResolveChildren(childNode, childElement, measureOnly);
         }
     }
 
@@ -481,18 +663,24 @@ public static class LayoutEngine
     /// Re-resolves nested children after a node's size has been set by its parent.
     /// This handles elements like nested Row/Column/Box that need their own child layout pass.
     /// </summary>
-    private static void ResolveChildren(LayoutNode node, Element element)
+    /// <param name="node">The parent layout node whose children need resolving.</param>
+    /// <param name="element">The source element for the node.</param>
+    /// <param name="measureOnly">
+    /// When <see langword="true"/>, performs a measurement-only pass that skips cross-axis
+    /// stretch to break circular height dependencies.
+    /// </param>
+    private static void ResolveChildren(LayoutNode node, Element element, bool measureOnly = false)
     {
         switch (element)
         {
             case Box box:
-                ResolveBox(node, box);
+                ResolveBox(node, box, measureOnly);
                 break;
             case Row row:
-                ResolveRow(node, row);
+                ResolveRow(node, row, measureOnly);
                 break;
             case Column col:
-                ResolveColumn(node, col);
+                ResolveColumn(node, col, measureOnly);
                 break;
         }
     }
@@ -592,6 +780,72 @@ public static class LayoutEngine
 
         double totalGap = col.Gap * Math.Max(0, col.Children.Count - 1);
         return (maxWidth + insetH, totalHeight + totalGap + insetV);
+    }
+
+    /// <summary>
+    /// Computes the actual content height of a resolved container from its children's sizes.
+    /// Used after a measurement resolve pass to determine how tall a container's content
+    /// actually is, independent of any stretch or explicit height.
+    /// </summary>
+    /// <param name="node">The container's layout node with resolved children.</param>
+    /// <param name="element">The container element.</param>
+    /// <returns>The content-based height including padding and border.</returns>
+    private static double ComputeContentHeight(LayoutNode node, Element element)
+    {
+        switch (element)
+        {
+            case Row row:
+            {
+                var p = StyleResolver.GetPadding(row);
+                var b = StyleResolver.GetBorderWidths(row);
+                double maxH = 0;
+                for (int i = 0; i < node.Children.Count; i++)
+                {
+                    if (node.Children[i].Height > maxH)
+                        maxH = node.Children[i].Height;
+                }
+
+                return maxH + p.VerticalTotal + b.VerticalTotal;
+            }
+
+            case Column col:
+            {
+                var p = StyleResolver.GetPadding(col);
+                var b = StyleResolver.GetBorderWidths(col);
+                double totalH = 0;
+                for (int i = 0; i < node.Children.Count; i++)
+                    totalH += node.Children[i].Height;
+                double gap = col.Gap * Math.Max(0, node.Children.Count - 1);
+                return totalH + gap + p.VerticalTotal + b.VerticalTotal;
+            }
+
+            case Box:
+            {
+                var p = StyleResolver.GetPadding(element);
+                var b = StyleResolver.GetBorderWidths(element);
+                if (node.Children.Count > 0)
+                    return node.Children[0].Height + p.VerticalTotal + b.VerticalTotal;
+                return p.VerticalTotal + b.VerticalTotal;
+            }
+
+            default:
+                return node.Height;
+        }
+    }
+
+    /// <summary>
+    /// Recursively clears cached text wrap results from a node and all its descendants.
+    /// Called between the measurement pass and the final layout pass to ensure text is
+    /// re-measured if widths change (e.g., due to flex distribution or stretch).
+    /// </summary>
+    /// <param name="node">The root node to invalidate from.</param>
+    private static void InvalidateCachedWrapResults(LayoutNode node)
+    {
+        node.CachedWrapResult = null;
+        for (int i = 0; i < node.Children.Count; i++)
+        {
+            InvalidateCachedWrapResults(node.Children[i]);
+        }
     }
 
     // ── Phase 3: Position ───────────────────────────────────────────────
