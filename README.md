@@ -2,30 +2,6 @@
 
 Declarative PDF layout engine for .NET. Flexbox layout, PDF/A and PDF/UA conformance, streaming output, pure managed C#.
 
-## Comparison
-
-| | PdfFlex | QuestPDF | PDFsharp | IronPDF | iText 7 | Aspose.PDF |
-|---|---|---|---|---|---|---|
-| **License** | MIT | Hybrid* | MIT | Commercial ($749+) | AGPL / commercial ($10K+/yr) | Commercial ($1,199+) |
-| **Layout** | Flexbox (native) | Fluent (native) | Manual coordinates | HTML/CSS (Chromium) | Programmatic | Programmatic |
-| **PDF/A** | 1a/1b – 3a/3b | 2a/2b – 3a/3u | Hardcoded 1a only | 1–3 | All | All |
-| **PDF/UA** | UA-1 (automatic) | UA-1 (manual) | UA-1 (manual) | UA-1 | UA-1/2 | UA-1 |
-| **Conformance selection** | Per-level, combinable | Per-level | Boolean flag | Per-level | Per-level | Per-level |
-| **Save-time validation** | Yes | No | No | — | Yes | — |
-| **Digital signatures** | PKCS#7/CMS | No | Limited | Yes | Yes | Yes |
-| **SVG** | Native vectors | Native | No | Via Chromium | Via add-on | Separate product |
-| **Large docs** | Streaming (50K+ pages) | Lazy elements | In-memory | Chromium-limited | Streaming | In-memory |
-| **Deploy size** | ~5 MB | ~36 MB | ~4.4 MB | ~250 MB | ~5 MB | ~196 MB |
-| **Image formats** | PNG, JPEG, BMP, GIF, SVG | PNG, JPEG (via Skia) | PNG, JPEG, BMP (Core) | Via Chromium | PNG, JPEG, BMP | PNG, JPEG, BMP |
-| **Native deps** | None | Skia | None (Core) | Chromium | None | System.Drawing |
-| **Cross-platform** | Win/Linux/macOS | Win/Linux/macOS | Win/Linux/macOS (Core) | Win/Linux/macOS | Win/Linux/macOS | Needs libgdiplus on Linux |
-
-*QuestPDF was MIT through 2022.12.x. Current versions require a paid license above $1M annual revenue.
-
-PDFsharp's PDF/A: a single `SetPdfA()` method, no level parameter, XMP hardcoded to PDF/A-1a. Described in their docs as "very early state."
-
-PDF/UA automatic vs manual: PDF/UA requires a structure tree mapping every piece of content to its semantic role (paragraph, heading, table cell, figure, etc.). Most libraries require the developer to manually tag each element. QuestPDF recently added manual semantic methods (`SemanticHeader1()`, `SemanticImage()`, etc.). PDFsharp requires manual `BeginElement`/`End` calls around every draw operation. PdfFlex's layout engine already knows the semantic role of every element in the tree, so the tagging happens automatically during rendering with no additional API calls.
-
 ## Features
 
 - Flexbox layout - rows, columns, flex-grow/shrink, justify, align, gap, padding, margin
@@ -85,6 +61,30 @@ The output PDF has a complete structure tree (/H1, /P, /Figure with alt text), d
 ```csharp
 doc.Conformance = PdfConformance.PdfA2a.With(PdfConformance.PdfUA1);
 ```
+
+## Comparison
+
+| | PdfFlex | QuestPDF | PDFsharp | IronPDF | iText 7 | Aspose.PDF |
+|---|---|---|---|---|---|---|
+| **License** | MIT | Hybrid* | MIT | Commercial ($749+) | AGPL / commercial ($10K+/yr) | Commercial ($1,199+) |
+| **Layout** | Flexbox (native) | Fluent (native) | Manual coordinates | HTML/CSS (Chromium) | Programmatic | Programmatic |
+| **PDF/A** | 1a/1b – 3a/3b | 2a/2b – 3a/3u | Hardcoded 1a only | 1–3 | All | All |
+| **PDF/UA** | UA-1 (automatic) | UA-1 (manual) | UA-1 (manual) | UA-1 | UA-1/2 | UA-1 |
+| **Conformance selection** | Per-level, combinable | Per-level | Boolean flag | Per-level | Per-level | Per-level |
+| **Save-time validation** | Yes | No | No | — | Yes | — |
+| **Digital signatures** | PKCS#7/CMS | No | Limited | Yes | Yes | Yes |
+| **SVG** | Native vectors | Native | No | Via Chromium | Via add-on | Separate product |
+| **Large docs** | Streaming (50K+ pages) | Lazy elements | In-memory | Chromium-limited | Streaming | In-memory |
+| **Deploy size** | ~5 MB | ~36 MB | ~4.4 MB | ~250 MB | ~5 MB | ~196 MB |
+| **Image formats** | PNG, JPEG, BMP, GIF, SVG | PNG, JPEG (via Skia) | PNG, JPEG, BMP (Core) | Via Chromium | PNG, JPEG, BMP | PNG, JPEG, BMP |
+| **Native deps** | None | Skia | None (Core) | Chromium | None | System.Drawing |
+| **Cross-platform** | Win/Linux/macOS | Win/Linux/macOS | Win/Linux/macOS (Core) | Win/Linux/macOS | Win/Linux/macOS | Needs libgdiplus on Linux |
+
+*QuestPDF was MIT through 2022.12.x. Current versions require a paid license above $1M annual revenue.
+
+PDFsharp's PDF/A: a single `SetPdfA()` method, no level parameter, XMP hardcoded to PDF/A-1a. Described in their docs as "very early state."
+
+PDF/UA automatic vs manual: PDF/UA requires a structure tree mapping every piece of content to its semantic role (paragraph, heading, table cell, figure, etc.). Most libraries require the developer to manually tag each element. QuestPDF recently added manual semantic methods (`SemanticHeader1()`, `SemanticImage()`, etc.). PDFsharp requires manual `BeginElement`/`End` calls around every draw operation. PdfFlex's layout engine already knows the semantic role of every element in the tree, so the tagging happens automatically during rendering with no additional API calls.
 
 ## License
 
