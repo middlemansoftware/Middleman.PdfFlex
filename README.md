@@ -12,7 +12,7 @@ Declarative PDF layout engine for .NET. Flexbox layout, PDF/A and PDF/UA conform
 - Images (PNG, JPEG, BMP, GIF, TGA, PSD) and SVG (native vectors via Middleman.Svg)
 - PDF/A (1a, 1b, 2a, 2b, 2u, 3a, 3b) with XMP metadata, ICC output intents, save-time validation
 - Automatic PDF/UA-1 tagging - the layout engine knows what every element is semantically, so setting `Conformance = PdfConformance.PdfUA1` produces a fully tagged, accessible PDF with zero manual tagging code
-- Digital signatures (PKCS#7/CMS), encryption v1–v5
+- Digital signatures (PKCS#7/CMS), encryption v1 - v5
 - Streaming output - renders pages one at a time and releases content stream memory, keeping usage bounded regardless of page count (50,000+ pages tested)
 - .NET 8.0, no native dependencies, no GDI+, no WPF, no System.Drawing
 
@@ -68,7 +68,7 @@ doc.Conformance = PdfConformance.PdfA2a.With(PdfConformance.PdfUA1);
 |---|---|---|---|---|---|---|
 | **License** | MIT | Hybrid* | MIT | Commercial ($749+) | AGPL / commercial ($10K+/yr) | Commercial ($1,199+) |
 | **Layout** | Flexbox (native) | Fluent (native) | Manual coordinates | HTML/CSS (Chromium) | Programmatic | Programmatic |
-| **PDF/A** | 1a/1b – 3a/3b | 2a/2b – 3a/3u | Hardcoded 1a only | 1–3 | All | All |
+| **PDF/A** | 1a/1b - 3a/3b | 2a/2b - 3a/3u | Hardcoded 1a only | 1-3 | All | All |
 | **PDF/UA** | UA-1 (automatic) | UA-1 (manual) | UA-1 (manual) | UA-1 | UA-1/2 | UA-1 |
 | **Conformance selection** | Per-level, combinable | Per-level | Boolean flag | Per-level | Per-level | Per-level |
 | **Save-time validation** | Yes | No | No | — | Yes | — |
