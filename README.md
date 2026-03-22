@@ -6,8 +6,9 @@ Declarative PDF layout engine for .NET. Flexbox layout, PDF/A and PDF/UA conform
 
 - Flexbox layout - rows, columns, flex-grow/shrink, justify, align, gap, padding, margin
 - CSS-like styling - cascading properties, typed units (pt, mm, in, cm, %, fr)
-- Automatic pagination with watermarks and page breaks
-- Tables with repeated headers and automatic page splitting
+- Automatic pagination with page breaks
+- Tables with repeated headers, continuation text, orphan prevention, and automatic page splitting
+- Watermarks - pre-blended when transparency is not allowed (PDF/A-1), native alpha otherwise
 - Rich text with inline spans
 - Images (PNG, JPEG, BMP, GIF, TGA, PSD) and SVG (native vectors via Middleman.Svg)
 - PDF/A (1a, 1b, 2a, 2b, 2u, 3a, 3b) with XMP metadata, ICC output intents, save-time validation
@@ -64,21 +65,21 @@ doc.Conformance = PdfConformance.PdfA2a.With(PdfConformance.PdfUA1);
 
 ## Comparison
 
-| | PdfFlex | QuestPDF | PDFsharp | IronPDF | iText 7 | Aspose.PDF |
-|---|---|---|---|---|---|---|
-| **License** | MIT | Hybrid* | MIT | Commercial ($749+) | AGPL / commercial ($10K+/yr) | Commercial ($1,199+) |
-| **Layout** | Flexbox (native) | Fluent (native) | Manual coordinates | HTML/CSS (Chromium) | Programmatic | Programmatic |
-| **PDF/A** | 1a/1b - 3a/3b | 2a/2b - 3a/3u | Hardcoded 1a only | 1-3 | All | All |
-| **PDF/UA** | UA-1 (automatic) | UA-1 (manual) | UA-1 (manual) | UA-1 | UA-1/2 | UA-1 |
-| **Conformance selection** | Per-level, combinable | Per-level | Boolean flag | Per-level | Per-level | Per-level |
-| **Save-time validation** | Yes | No | No | — | Yes | — |
-| **Digital signatures** | PKCS#7/CMS | No | Limited | Yes | Yes | Yes |
-| **SVG** | Native vectors | Native | No | Via Chromium | Via add-on | Separate product |
-| **Large docs** | Streaming (50K+ pages) | Lazy elements | In-memory | Chromium-limited | Streaming | In-memory |
-| **Deploy size** | ~5 MB | ~36 MB | ~4.4 MB | ~250 MB | ~5 MB | ~196 MB |
-| **Image formats** | PNG, JPEG, BMP, GIF, SVG | PNG, JPEG (via Skia) | PNG, JPEG, BMP (Core) | Via Chromium | PNG, JPEG, BMP | PNG, JPEG, BMP |
-| **Native deps** | None | Skia | None (Core) | Chromium | None | System.Drawing |
-| **Cross-platform** | Win/Linux/macOS | Win/Linux/macOS | Win/Linux/macOS (Core) | Win/Linux/macOS | Win/Linux/macOS | Needs libgdiplus on Linux |
+| | PdfFlex | QuestPDF | PDFsharp | IronPDF | Aspose.PDF |
+|---|---|---|---|---|---|
+| **License** | MIT | Hybrid* | MIT | Commercial ($749+) | Commercial ($1,199+) |
+| **Layout** | Flexbox (native) | Fluent (native) | Manual coordinates | HTML/CSS (Chromium) | Programmatic |
+| **PDF/A** | 1a/1b - 3a/3b | 2a/2b - 3a/3u | Hardcoded 1a only | 1-3 | All |
+| **PDF/UA** | UA-1 (automatic) | UA-1 (manual) | UA-1 (manual) | UA-1/2 (from HTML) | UA-1 |
+| **Conformance selection** | Per-level, combinable | Per-level | Boolean flag | Per-level | Per-level |
+| **Save-time validation** | Yes | No | No | — | — |
+| **Digital signatures** | PKCS#7/CMS | No | PKCS#7/CMS | Yes | Yes |
+| **SVG** | Native vectors | Native | No | Via Chromium | Separate product |
+| **Large docs** | Streaming (50K+ pages) | Lazy elements | In-memory | Chromium-limited | In-memory |
+| **Deploy size** | ~5 MB | ~36 MB | ~4.4 MB | ~250 MB | ~196 MB |
+| **Image formats** | PNG, JPEG, BMP, GIF, SVG | PNG, JPEG (via Skia) | PNG, JPEG, BMP (Core) | Via Chromium | PNG, JPEG, BMP |
+| **Native deps** | None | Skia | None (Core) | Chromium | System.Drawing |
+| **Cross-platform** | Win/Linux/macOS | Win/Linux/macOS | Win/Linux/macOS (Core) | Win/Linux/macOS | Needs libgdiplus on Linux |
 
 *QuestPDF was MIT through 2022.12.x. Current versions require a paid license above $1M annual revenue.
 
