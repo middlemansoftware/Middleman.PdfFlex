@@ -1,3 +1,0 @@
-Type: MIT
-Notes: Pure C# library. Dependencies must be MIT/BSD/Apache 2.0/zlib compatible. Included source: PdfSharp Core (MIT), StbImageSharp (MIT), Google Noto Fonts (Apache 2.0). NuGet deps: Microsoft.Extensions.Logging.Abstractions (MIT), System.Security.Cryptography.Pkcs (MIT).
-Updated: 2026-03-20
