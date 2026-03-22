@@ -3,7 +3,7 @@
 
 using Middleman.PdfFlex.Layout;
 using Middleman.PdfFlex.Styling;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
 
 namespace Middleman.PdfFlex.Rendering;
 
@@ -19,7 +19,7 @@ internal static class BackgroundRenderer
     /// Renders the background fill for the specified layout node. Does nothing if the
     /// element has no background defined or if the node has zero area.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="gfx">The PdfFlex graphics surface to draw on.</param>
     /// <param name="node">The layout node whose background to render.</param>
     public static void Render(XGraphics gfx, LayoutNode node)
     {

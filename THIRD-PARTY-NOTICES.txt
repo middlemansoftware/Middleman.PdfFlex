@@ -8,20 +8,25 @@ License: MIT
 Source: https://github.com/empira/PDFsharp
 ────────────────────────────────────────
 
-The PDF engine in Middleman.PdfFlex is based on the PdfSharp Core library
-by empira Software GmbH. PdfSharp source has been modified to fix
-cross-platform issues, add PDF/UA tagging, support streaming output,
-and integrate with the Middleman.PdfFlex layout engine.
+Middleman.PdfFlex includes a modified fork of PDFsharp 6.2.x (MIT License,
+copyright empira Software GmbH). The fork covers the PDF object model,
+drawing primitives (XGraphics, XFont, XImage), PDF reader/writer, security,
+digital signatures, and universal accessibility modules. MigraDoc and
+platform-specific builds (GDI+/WPF) are not included. Modifications include
+a PDF conformance system (PDF/A, PDF/UA, PDF Declarations), watermark
+rendering fixes, streaming output support, and namespace consolidation
+under Middleman.PdfFlex.
 
 ────────────────────────────────────────
 StbImageSharp 2.30.15
-License: MIT
+License: Public Domain (Unlicense) / MIT dual-licensed
 Source: https://github.com/StbSharp/StbImageSharp
 ────────────────────────────────────────
 
-StbImageSharp (a pure C# port of stb_image.h) source is included directly
-for JPEG, PNG, BMP, TGA, GIF, and HDR image decoding with zero external
-dependencies.
+StbImageSharp (a pure C# port of stb_image.h) source is embedded directly
+for PNG, BMP, GIF, TGA, PSD, and HDR image decoding with zero external
+dependencies. Compiled with STBSHARP_INTERNAL so all types are internal.
+JPEG files are handled via passthrough (not decoded by StbImageSharp).
 
 ────────────────────────────────────────
 Google Noto Fonts
@@ -38,8 +43,8 @@ License: MIT
 Source: https://github.com/dotnet/runtime
 ────────────────────────────────────────
 
-Logging abstractions used by the PdfSharp PDF engine. Pure managed C#,
-fully cross-platform.
+Logging abstractions used by the PDF engine. Pure managed C#, fully
+cross-platform.
 
 ────────────────────────────────────────
 System.Security.Cryptography.Pkcs 10.0.5

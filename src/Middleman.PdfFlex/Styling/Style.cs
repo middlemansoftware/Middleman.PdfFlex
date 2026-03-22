@@ -10,7 +10,7 @@ namespace Middleman.PdfFlex.Styling;
 /// </summary>
 public class Style
 {
-    // ── Box model ──────────────────────────────────────────────
+    #region Box Model
 
     /// <summary>Gets or sets the inner padding. Null inherits from the parent.</summary>
     public EdgeInsets? Padding { get; set; }
@@ -24,7 +24,9 @@ public class Style
     /// <summary>Gets or sets the background. Null inherits from the parent.</summary>
     public Background? Background { get; set; }
 
-    // ── Sizing ─────────────────────────────────────────────────
+    #endregion Box Model
+
+    #region Sizing
 
     /// <summary>Gets or sets the explicit width. Null means auto-sized.</summary>
     public Length? Width { get; set; }
@@ -44,7 +46,9 @@ public class Style
     /// <summary>Gets or sets the maximum height constraint.</summary>
     public Length? MaxHeight { get; set; }
 
-    // ── Flex layout ────────────────────────────────────────────
+    #endregion Sizing
+
+    #region Flex Layout
 
     /// <summary>
     /// Gets or sets the flex grow factor. Determines how much this element grows
@@ -58,7 +62,9 @@ public class Style
     /// </summary>
     public float FlexShrink { get; set; } = 1;
 
-    // ── Typography ─────────────────────────────────────────────
+    #endregion Flex Layout
+
+    #region Typography
 
     /// <summary>Gets or sets the font family name. Null inherits from the parent.</summary>
     public string? FontFamily { get; set; }
@@ -80,4 +86,6 @@ public class Style
 
     /// <summary>Gets or sets the line height multiplier. Null inherits from the parent.</summary>
     public double? LineHeight { get; set; }
+
+    #endregion Typography
 }

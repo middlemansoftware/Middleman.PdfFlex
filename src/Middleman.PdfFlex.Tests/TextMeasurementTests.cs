@@ -8,7 +8,7 @@ using Middleman.PdfFlex.Styling;
 namespace Middleman.PdfFlex.Tests;
 
 /// <summary>
-/// Verifies text measurement using real PdfSharp font metrics via <see cref="TextMeasurer"/>.
+/// Verifies text measurement using real PdfFlex font metrics via <see cref="TextMeasurer"/>.
 /// No mocks: the TextMeasurer auto-initializes its thread-local XGraphics context.
 /// </summary>
 public class TextMeasurementTests

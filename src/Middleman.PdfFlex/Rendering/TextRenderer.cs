@@ -4,7 +4,8 @@
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Layout;
 using Middleman.PdfFlex.Styling;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
+using Middleman.PdfFlex.UniversalAccessibility;
 
 namespace Middleman.PdfFlex.Rendering;
 
@@ -19,16 +20,22 @@ internal static class TextRenderer
     /// <summary>
     /// Renders a <see cref="TextBlock"/> element within the bounds of the specified layout node.
     /// Uses word wrapping to break text into lines that fit within the node's width,
-    /// matching the layout engine's text measurement.
+    /// matching the layout engine's text measurement. Resolves <c>{page}</c> and <c>{pages}</c>
+    /// tokens before rendering.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="ctx">The render context carrying the graphics surface and page state.</param>
     /// <param name="node">The layout node positioning the text.</param>
     /// <param name="textBlock">The text block element to render.</param>
-    public static void RenderTextBlock(XGraphics gfx, LayoutNode node, TextBlock textBlock)
+    public static void RenderTextBlock(RenderContext ctx, LayoutNode node, TextBlock textBlock)
     {
         if (string.IsNullOrEmpty(textBlock.Text))
             return;
 
+        // Resolve page tokens before rendering.
+        string resolvedText = ResolveTokens(textBlock.Text, ctx.CurrentPage, ctx.TotalPages);
+
+        var gfx = ctx.Graphics;
+        var sb = ctx.StructureBuilder;
         var font = Rendering.FontHelper.CreateFontFromElement(textBlock);
         var color = StyleResolver.GetFontColor(textBlock);
         var brush = new XSolidBrush(ColorConvert.ToXColor(color));
@@ -37,9 +44,25 @@ internal static class TextRenderer
 
         double lineHeight = font.GetHeight();
 
-        // Use the same word-wrapping logic as the layout engine to ensure
-        // rendered text matches the measured height.
-        var wrapResult = TextMeasurer.WrapTextBlock(textBlock, node.Width);
+        // Open structure element: P (paragraph) or H1-H6 based on heading level.
+        if (sb != null)
+        {
+            var tag = textBlock.HeadingLevel switch
+            {
+                1 => PdfBlockLevelElementTag.Heading1,
+                2 => PdfBlockLevelElementTag.Heading2,
+                3 => PdfBlockLevelElementTag.Heading3,
+                4 => PdfBlockLevelElementTag.Heading4,
+                5 => PdfBlockLevelElementTag.Heading5,
+                6 => PdfBlockLevelElementTag.Heading6,
+                _ => PdfBlockLevelElementTag.Paragraph
+            };
+            sb.BeginElement(tag);
+        }
+
+        // Wrap the resolved text (not the raw token text) to ensure rendered
+        // text matches the actual characters being drawn.
+        var wrapResult = TextMeasurer.WrapText(resolvedText, font, node.Width);
         double cursorY = node.Y;
 
         for (int i = 0; i < wrapResult.Lines.Count; i++)
@@ -51,19 +74,24 @@ internal static class TextRenderer
             gfx.DrawString(wrapResult.Lines[i], font, brush, lineRect, format);
             cursorY += lineHeight;
         }
+
+        if (sb != null) sb.End();
     }
 
     /// <summary>
     /// Renders a <see cref="RichText"/> element using word-wrapping across span boundaries.
     /// Each line is rendered by drawing its span segments sequentially with per-span styling.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="ctx">The render context carrying the graphics surface and page state.</param>
     /// <param name="node">The layout node positioning the rich text.</param>
     /// <param name="richText">The rich text element to render.</param>
-    public static void RenderRichText(XGraphics gfx, LayoutNode node, RichText richText)
+    public static void RenderRichText(RenderContext ctx, LayoutNode node, RichText richText)
     {
         if (richText.Spans.Count == 0)
             return;
+
+        var gfx = ctx.Graphics;
+        var sb = ctx.StructureBuilder;
 
         // Pre-calculate the line height as the tallest span's line height.
         double maxLineHeight = 0;
@@ -77,6 +105,9 @@ internal static class TextRenderer
 
         // Use the same word-wrapping logic as the layout engine.
         var wrapResult = TextMeasurer.WrapRichText(richText, node.Width);
+
+        // Open P structure element for the entire rich text block.
+        if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.Paragraph);
 
         double cursorY = node.Y;
 
@@ -99,11 +130,14 @@ internal static class TextRenderer
                 // the layout engine's measurements and avoid DPI/transform drift.
                 var segSize = TextMeasurer.MeasureString(segment.Text, spanFont);
                 var segRect = new XRect(cursorX, cursorY, segSize.Width, maxLineHeight);
+
+                if (sb != null) sb.BeginElement(PdfInlineLevelElementTag.Span);
                 gfx.DrawString(segment.Text, spanFont, spanBrush, segRect, XStringFormats.TopLeft);
 
                 // Draw underline or strikethrough decorations.
                 RenderDecorations(gfx, segment.Span.Style, spanFont, spanBrush,
                     cursorX, cursorY, segSize.Width, maxLineHeight);
+                if (sb != null) sb.End(); // Span
 
                 cursorX += segSize.Width;
 
@@ -116,11 +150,33 @@ internal static class TextRenderer
 
             cursorY += maxLineHeight;
         }
+
+        if (sb != null) sb.End(); // P
     }
 
     #endregion Public Methods
 
     #region Private Methods
+
+    /// <summary>
+    /// Replaces page number tokens in text with actual values.
+    /// Supported tokens: <c>{page}</c> (current page number), <c>{pages}</c> (total page count).
+    /// Token matching is case-insensitive.
+    /// </summary>
+    /// <param name="text">The text potentially containing tokens.</param>
+    /// <param name="currentPage">The 1-based current page number.</param>
+    /// <param name="totalPages">The total number of pages in the document.</param>
+    /// <returns>The text with all tokens replaced by their numeric values.</returns>
+    private static string ResolveTokens(string text, int currentPage, int totalPages)
+    {
+        if (text.IndexOf('{') < 0)
+            return text;
+
+        // Replace {pages} before {page} to avoid partial match ({page} is a substring of {pages}).
+        return text
+            .Replace("{pages}", totalPages.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{page}", currentPage.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Resolves the text alignment from the element's style cascade.
@@ -180,3 +236,29 @@ internal static class TextRenderer
 
     #endregion Private Methods
 }
+
+/// <summary>
+/// Result of word-wrapping a <see cref="TextBlock"/> to a constrained width.
+/// </summary>
+/// <param name="Lines">The wrapped text lines.</param>
+/// <param name="TotalHeight">The total height in points of all wrapped lines.</param>
+internal readonly record struct TextWrapResult(IReadOnlyList<string> Lines, double TotalHeight);
+
+/// <summary>
+/// Result of word-wrapping a <see cref="RichText"/> element to a constrained width.
+/// Each line contains one or more <see cref="SpanSegment"/> entries representing the
+/// portions of spans that fit on that line.
+/// </summary>
+/// <param name="Lines">The wrapped lines, each containing span segments.</param>
+/// <param name="TotalHeight">The total height in points of all wrapped lines.</param>
+internal readonly record struct RichTextWrapResult(
+    IReadOnlyList<IReadOnlyList<SpanSegment>> Lines,
+    double TotalHeight);
+
+/// <summary>
+/// A segment of a <see cref="Span"/> after word-wrapping. Contains the original span
+/// (for style information) and the portion of text assigned to a particular line.
+/// </summary>
+/// <param name="Span">The source span for style/font information.</param>
+/// <param name="Text">The text content for this segment of the span.</param>
+internal readonly record struct SpanSegment(Span Span, string Text);

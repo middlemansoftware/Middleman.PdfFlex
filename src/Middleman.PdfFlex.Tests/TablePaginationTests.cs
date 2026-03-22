@@ -4,7 +4,7 @@
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Rendering;
 using Middleman.PdfFlex.Styling;
-using PdfSharp.Pdf.IO;
+using Middleman.PdfFlex.Pdf.IO;
 
 namespace Middleman.PdfFlex.Tests;
 

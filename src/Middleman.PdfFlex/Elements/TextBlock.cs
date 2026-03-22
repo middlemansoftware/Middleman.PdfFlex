@@ -26,6 +26,13 @@ public class TextBlock : Element
     /// <summary>Gets the optional font specification. When null, font properties are inherited from the parent chain.</summary>
     public FontSpec? Font { get; }
 
+    /// <summary>
+    /// Gets the optional heading level for PDF/UA accessibility tagging.
+    /// Null renders as /P (paragraph). Values 1-6 render as /H1 through /H6
+    /// for screen reader heading navigation.
+    /// </summary>
+    public int? HeadingLevel { get; }
+
     #endregion Public Properties
 
     #region Constructors
@@ -34,12 +41,16 @@ public class TextBlock : Element
     /// <param name="text">The text content to render.</param>
     /// <param name="font">Optional font specification. Null inherits from parent chain.</param>
     /// <param name="style">Optional style to apply to this text element.</param>
-    public TextBlock(string text, FontSpec? font = null, Style? style = null)
+    /// <param name="headingLevel">Optional heading level (1-6) for PDF/UA tagging. Null renders as paragraph.</param>
+    public TextBlock(string text, FontSpec? font = null, Style? style = null, int? headingLevel = null)
     {
         ArgumentNullException.ThrowIfNull(text);
+        if (headingLevel.HasValue && (headingLevel.Value < 1 || headingLevel.Value > 6))
+            throw new ArgumentOutOfRangeException(nameof(headingLevel), "Heading level must be between 1 and 6.");
         Text = text;
         Font = font;
         Style = style;
+        HeadingLevel = headingLevel;
     }
 
     #endregion Constructors

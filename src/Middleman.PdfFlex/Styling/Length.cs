@@ -10,6 +10,8 @@ namespace Middleman.PdfFlex.Styling;
 /// </summary>
 public readonly struct Length : IEquatable<Length>
 {
+    #region Nested Types
+
     /// <summary>
     /// The unit of measurement for a <see cref="Length"/> value.
     /// </summary>
@@ -37,17 +39,29 @@ public readonly struct Length : IEquatable<Length>
         Fr
     }
 
+    #endregion Nested Types
+
+    #region Public Properties
+
     /// <summary>Gets the numeric value of this length.</summary>
     public double Value { get; }
 
     /// <summary>Gets the unit of measurement.</summary>
     public Unit Type { get; }
 
+    #endregion Public Properties
+
+    #region Constructors
+
     private Length(double value, Unit type)
     {
         Value = value;
         Type = type;
     }
+
+    #endregion Constructors
+
+    #region Static Factories
 
     /// <summary>Creates a length in typographic points.</summary>
     /// <param name="v">The value in points.</param>
@@ -79,6 +93,10 @@ public readonly struct Length : IEquatable<Length>
     /// <summary>A zero-point length.</summary>
     public static readonly Length Zero = new(0, Unit.Point);
 
+    #endregion Static Factories
+
+    #region Conversion
+
     /// <summary>
     /// Converts this length to an absolute value in points. Only absolute units
     /// (Point, Millimeter, Inch, Centimeter) can be converted without context.
@@ -106,6 +124,10 @@ public readonly struct Length : IEquatable<Length>
     /// <summary>Gets whether this length is auto-sized.</summary>
     public bool IsAuto => Type is Unit.Auto;
 
+    #endregion Conversion
+
+    #region Equality
+
     /// <inheritdoc />
     public bool Equals(Length other) =>
         Type == other.Type && Value.Equals(other.Value);
@@ -124,6 +146,10 @@ public readonly struct Length : IEquatable<Length>
     /// <summary>Determines whether two <see cref="Length"/> values are not equal.</summary>
     public static bool operator !=(Length left, Length right) => !left.Equals(right);
 
+    #endregion Equality
+
+    #region Overrides
+
     /// <inheritdoc />
     public override string ToString() => Type switch
     {
@@ -136,4 +162,6 @@ public readonly struct Length : IEquatable<Length>
         Unit.Fr => $"{Value}fr",
         _ => $"{Value} {Type}"
     };
+
+    #endregion Overrides
 }

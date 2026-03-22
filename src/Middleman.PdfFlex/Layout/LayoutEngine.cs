@@ -212,15 +212,30 @@ public static class LayoutEngine
     }
 
     /// <summary>
-    /// Measures an ImageBox. Uses the element's intrinsic dimensions if available,
-    /// otherwise falls back to a 100x100 default to avoid loading the image during layout.
+    /// Measures an ImageBox. Style dimensions take priority, then intrinsic dimensions,
+    /// then a 100x100 default to avoid loading the image during layout.
     /// </summary>
     private static (double Width, double Height) MeasureImageBox(ImageBox img)
     {
         const double defaultSize = 100.0;
-        double w = img.IntrinsicWidth > 0 ? img.IntrinsicWidth : defaultSize;
-        double h = img.IntrinsicHeight > 0 ? img.IntrinsicHeight : defaultSize;
+
+        double w = ResolveStyleDimension(img.Style?.Width)
+                   ?? (img.IntrinsicWidth > 0 ? img.IntrinsicWidth : defaultSize);
+        double h = ResolveStyleDimension(img.Style?.Height)
+                   ?? (img.IntrinsicHeight > 0 ? img.IntrinsicHeight : defaultSize);
         return (w, h);
+    }
+
+    /// <summary>
+    /// Resolves a style dimension to a point value if it is an absolute unit (pt, mm, in, cm).
+    /// Returns null for relative units (%, fr, auto) or if the length is null.
+    /// </summary>
+    private static double? ResolveStyleDimension(Length? length)
+    {
+        if (length == null)
+            return null;
+        var len = length.Value;
+        return len.IsAbsolute ? len.ToPoints() : null;
     }
 
     /// <summary>
@@ -448,7 +463,7 @@ public static class LayoutEngine
         // First pass: allocate main-axis widths following the Yoga/Flexbox algorithm:
         //   1. Children with explicit width get that exact size.
         //   2. Non-flex children (flex-grow == 0) get their intrinsic measured width.
-        //   3. Flex-grow children start at 0 (flex-basis: 0) — they receive space
+        //   3. Flex-grow children start at 0 (flex-basis: 0) - they receive space
         //      only from the surplus after non-flex children are allocated.
         // This ensures non-flex children keep their natural width and flex-grow
         // children fill the remaining space, rather than all children competing

@@ -1,0 +1,32 @@
+// Copyright (c) Middleman Software, Inc. All rights reserved.
+// Licensed under the MIT License. See LICENSE file in the project root.
+
+namespace Middleman.PdfFlex.Pdf
+{
+    /// <summary>
+    /// Identifies the state of the document.
+    /// </summary>
+    [Flags]
+    enum DocumentState
+    {
+        /// <summary>
+        /// The document was created from scratch.
+        /// </summary>
+        Created = 0x0001,
+
+        /// <summary>
+        /// The document was created by opening an existing PDF file.
+        /// </summary>
+        Imported = 0x0002,
+
+        /// <summary>
+        /// The document is disposed.
+        /// </summary>
+        Disposed = 0x8000,
+
+        /// <summary>
+        /// The document was saved and cannot be modified anymore.
+        /// </summary>
+        Saved = 0x1000,
+    }
+}

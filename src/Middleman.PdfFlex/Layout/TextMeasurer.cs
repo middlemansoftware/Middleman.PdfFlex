@@ -5,12 +5,12 @@ using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Pdf.Fonts;
 using Middleman.PdfFlex.Rendering;
 using Middleman.PdfFlex.Styling;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
 
 namespace Middleman.PdfFlex.Layout;
 
 /// <summary>
-/// Provides accurate text measurement using PdfSharp font metrics. Supports single-line
+/// Provides accurate text measurement using Middleman.PdfFlex font metrics. Supports single-line
 /// width/height measurement and word-wrapping to a constrained width.
 /// </summary>
 /// <remarks>
@@ -148,11 +148,28 @@ internal static class TextMeasurer
             return new TextWrapResult(Array.Empty<string>(), 0);
 
         var font = FontHelper.CreateFontFromElement(textBlock);
+        return WrapText(textBlock.Text, font, availableWidth);
+    }
+
+    /// <summary>
+    /// Word-wraps arbitrary text using the specified font to fit within the given width.
+    /// Used by the renderer after resolving page tokens so the wrapped text matches
+    /// the actual characters being drawn.
+    /// </summary>
+    /// <param name="text">The text to wrap.</param>
+    /// <param name="font">The font to use for measurement.</param>
+    /// <param name="availableWidth">The maximum width in points for each line.</param>
+    /// <returns>The wrapped lines and the total height in points.</returns>
+    public static TextWrapResult WrapText(string text, XFont font, double availableWidth)
+    {
+        if (string.IsNullOrEmpty(text))
+            return new TextWrapResult(Array.Empty<string>(), 0);
+
         var gfx = MeasureContext.Value!;
         double lineHeight = font.GetHeight();
 
         // Split on explicit newlines first, then word-wrap each paragraph.
-        var paragraphs = textBlock.Text.Split('\n');
+        var paragraphs = text.Split('\n');
         var wrappedLines = new List<string>();
 
         for (int p = 0; p < paragraphs.Length; p++)

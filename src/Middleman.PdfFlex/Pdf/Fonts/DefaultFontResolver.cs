@@ -3,13 +3,13 @@
 
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
-using PdfSharp.Fonts;
+using Middleman.PdfFlex.Fonts;
 
 namespace Middleman.PdfFlex.Pdf.Fonts;
 
 /// <summary>
 /// Cross-platform font resolver that auto-detects system fonts and falls back to bundled fonts.
-/// Implements <see cref="IFontResolver"/> for PdfSharp Core builds.
+/// Implements <see cref="IFontResolver"/> for PdfFlex Core builds.
 /// </summary>
 /// <remarks>
 /// <para>System font directories are scanned lazily on first use and cached for the lifetime of the process.</para>

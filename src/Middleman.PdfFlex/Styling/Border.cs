@@ -8,6 +8,8 @@ namespace Middleman.PdfFlex.Styling;
 /// </summary>
 public class Border
 {
+    #region Public Properties
+
     /// <summary>Gets the top border side.</summary>
     public BorderSide Top { get; }
 
@@ -23,6 +25,10 @@ public class Border
     /// <summary>Gets the corner radius in points. Zero means no rounding.</summary>
     public double CornerRadius { get; }
 
+    #endregion Public Properties
+
+    #region Constructors
+
     /// <summary>Creates a border with individually specified sides.</summary>
     /// <param name="top">The top border side.</param>
     /// <param name="right">The right border side.</param>
@@ -37,6 +43,10 @@ public class Border
         Left = left;
         CornerRadius = cornerRadius;
     }
+
+    #endregion Constructors
+
+    #region Static Factories
 
     /// <summary>Creates a uniform border on all four sides.</summary>
     /// <param name="width">The border width in points.</param>
@@ -99,4 +109,6 @@ public class Border
 
     /// <summary>Gets a border with no visible sides.</summary>
     public static Border None { get; } = new(BorderSide.None, BorderSide.None, BorderSide.None, BorderSide.None);
+
+    #endregion Static Factories
 }

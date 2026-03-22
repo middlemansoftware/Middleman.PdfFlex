@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the project root.
 
 using Middleman.PdfFlex.Styling;
+using Middleman.PdfFlex.Pdf;
 
 namespace Middleman.PdfFlex.Elements;
 
@@ -25,8 +26,36 @@ public class Document
     /// <summary>Gets or sets the optional watermark rendered behind content on every page.</summary>
     public Watermark? Watermark { get; set; }
 
+    /// <summary>
+    /// Gets or sets the conformance profile for the document (e.g. PDF/A-1b, PDF/UA-1).
+    /// Defaults to <see cref="PdfConformance.None"/>.
+    /// </summary>
+    public PdfConformance Conformance { get; set; } = PdfConformance.None;
+
     /// <summary>Gets or sets whether PDF/UA accessibility tagging is enabled.</summary>
-    public bool Accessibility { get; set; }
+    [Obsolete("Use Conformance property. Set Conformance = PdfConformance.PdfUA1")]
+    public bool Accessibility
+    {
+        get => Conformance.RequiresTaggedStructure;
+        set
+        {
+            if (value && !Conformance.RequiresTaggedStructure)
+                Conformance = Conformance.IsNone
+                    ? PdfConformance.PdfUA1
+                    : Conformance.With(PdfConformance.PdfUA1);
+            else if (!value)
+                throw new NotSupportedException(
+                    "Cannot remove PDF/UA via the Accessibility property. " +
+                    "Set the Conformance property directly.");
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the document language (e.g. "en-US"). Required by PDF/UA-1 for
+    /// screen reader language identification. Forwarded to the PDF metadata layer
+    /// when <see cref="Conformance"/> requires a document language.
+    /// </summary>
+    public string? Language { get; set; }
 
     /// <summary>Gets or sets the default style applied to all elements unless overridden.</summary>
     public Style? DefaultStyle { get; set; }

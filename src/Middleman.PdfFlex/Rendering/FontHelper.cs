@@ -3,12 +3,12 @@
 
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Styling;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
 
 namespace Middleman.PdfFlex.Rendering;
 
 /// <summary>
-/// Creates PdfSharp <see cref="XFont"/> instances from PdfFlex font specifications
+/// Creates PdfFlex <see cref="XFont"/> instances from PdfFlex font specifications
 /// and cascading style properties.
 /// </summary>
 internal static class FontHelper
@@ -116,7 +116,7 @@ internal static class FontHelper
     }
 
     /// <summary>
-    /// Maps PdfFlex font weight and style to a PdfSharp <see cref="XFontStyleEx"/> value.
+    /// Maps PdfFlex font weight and style to a PdfFlex <see cref="XFontStyleEx"/> value.
     /// </summary>
     private static XFontStyleEx MapFontStyle(FontWeight weight, Styling.FontStyle style)
     {

@@ -3,7 +3,8 @@
 
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Layout;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
+using Middleman.PdfFlex.UniversalAccessibility;
 
 namespace Middleman.PdfFlex.Rendering;
 
@@ -20,13 +21,16 @@ internal static class ImageRenderer
     /// Loads the image from a file path or byte array and scales it to fit while
     /// preserving the original aspect ratio.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="ctx">The render context carrying the graphics surface and page state.</param>
     /// <param name="node">The layout node positioning the image.</param>
     /// <param name="imageBox">The image element to render.</param>
-    public static void Render(XGraphics gfx, LayoutNode node, ImageBox imageBox)
+    public static void Render(RenderContext ctx, LayoutNode node, ImageBox imageBox)
     {
         if (node.Width <= 0 || node.Height <= 0)
             return;
+
+        var gfx = ctx.Graphics;
+        var sb = ctx.StructureBuilder;
 
         XImage? image = null;
         try
@@ -47,7 +51,15 @@ internal static class ImageRenderer
             double offsetX = node.X + ((node.Width - drawWidth) / 2.0);
             double offsetY = node.Y + ((node.Height - drawHeight) / 2.0);
 
+            if (sb != null)
+            {
+                var bbox = new XRect(offsetX, offsetY, drawWidth, drawHeight);
+                sb.BeginElement(PdfIllustrationElementTag.Figure, imageBox.AltText ?? "", bbox);
+            }
+
             gfx.DrawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+
+            if (sb != null) sb.End();
         }
         finally
         {

@@ -10,20 +10,15 @@
     <Authors>Middleman Software, Inc.</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/middlemansoftware/Middleman.PdfFlex</PackageProjectUrl>
-    <DefineConstants>CORE</DefineConstants>
+    <DefineConstants>CORE;STBSHARP_INTERNAL</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <NoWarn>CS1591;CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS8765;CS8767;CS0162;CS0168;CS0219;CS0414;CS0652</NoWarn>
+    <NoWarn>CS1591;CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS8765;CS8767;CS0162;CS0168;CS0219;CS0414;CS0652;CA2014</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Pdf\PdfSharpCore\Resources\sRGB2014.icc" LogicalName="PdfSharp.Resources.sRGB2014.icc" />
+    <EmbeddedResource Include="Pdf\Core\Resources\sRGB2014.icc" LogicalName="Middleman.PdfFlex.Resources.sRGB2014.icc" />
   </ItemGroup>
 
-  <!-- Exclude GDI+/WPF-only directories that should not be in the Core build -->
-  <ItemGroup>
-    <Compile Remove="Pdf\PdfSharpCore\Forms\**" />
-    <Compile Remove="Pdf\PdfSharpCore\Windows\**" />
-  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.5" />

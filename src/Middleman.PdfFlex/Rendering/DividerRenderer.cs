@@ -3,7 +3,7 @@
 
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Layout;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
 
 namespace Middleman.PdfFlex.Rendering;
 
@@ -17,7 +17,7 @@ internal static class DividerRenderer
     /// <summary>
     /// Renders a divider line within the bounds of the specified layout node.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="gfx">The PdfFlex graphics surface to draw on.</param>
     /// <param name="node">The layout node positioning the divider.</param>
     /// <param name="divider">The divider element to render.</param>
     public static void Render(XGraphics gfx, LayoutNode node, Divider divider)

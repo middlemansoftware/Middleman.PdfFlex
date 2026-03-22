@@ -2,7 +2,8 @@
 // Licensed under the MIT License. See LICENSE file in the project root.
 
 using Middleman.PdfFlex.Elements;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
+using Middleman.PdfFlex.Pdf;
 
 namespace Middleman.PdfFlex.Rendering;
 
@@ -21,11 +22,17 @@ internal static class WatermarkRenderer
     /// page diagonal. When angle is not specified, it calculates the diagonal angle
     /// from the page dimensions.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="gfx">The PdfFlex graphics surface to draw on.</param>
     /// <param name="watermark">The watermark definition.</param>
     /// <param name="pageWidth">The page width in points.</param>
     /// <param name="pageHeight">The page height in points.</param>
-    public static void Render(XGraphics gfx, Watermark watermark, double pageWidth, double pageHeight)
+    /// <param name="conformance">
+    /// The document's conformance profile. When the profile does not allow transparency,
+    /// the watermark color is pre-blended against white instead of using alpha transparency.
+    /// This avoids the issue where PdfFlex silently forces alpha to 1.0 for non-transparent
+    /// profiles, which would render the watermark at full opacity.
+    /// </param>
+    public static void Render(XGraphics gfx, Watermark watermark, double pageWidth, double pageHeight, PdfConformance conformance)
     {
         if (string.IsNullOrEmpty(watermark.Text))
             return;
@@ -42,7 +49,14 @@ internal static class WatermarkRenderer
         fontSize = Math.Clamp(fontSize, 8.0, 500.0);
 
         var font = new XFont("NotoSans", fontSize, XFontStyleEx.Bold);
-        var brush = new XSolidBrush(ColorConvert.ToXColor(watermark.Color, watermark.Opacity));
+
+        // Conformance profiles that prohibit transparency require pre-blending against white
+        // to simulate the watermark appearance without alpha.
+        XColor color = !conformance.AllowsTransparency
+            ? ColorConvert.ToXColorPreBlended(watermark.Color, watermark.Opacity)
+            : ColorConvert.ToXColor(watermark.Color, watermark.Opacity);
+
+        var brush = new XSolidBrush(color);
         var format = XStringFormats.Center;
 
         var state = gfx.Save();

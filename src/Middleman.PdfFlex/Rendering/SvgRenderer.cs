@@ -4,13 +4,14 @@
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Layout;
 using Middleman.Svg.Model;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
+using Middleman.PdfFlex.UniversalAccessibility;
 
 namespace Middleman.PdfFlex.Rendering;
 
 /// <summary>
 /// Renders <see cref="SvgBox"/> elements by converting SVG shapes and their cubic
-/// bezier paths to PdfSharp vector drawing operations. Produces native PDF vector
+/// bezier paths to PdfFlex vector drawing operations. Produces native PDF vector
 /// content rather than rasterized images.
 /// </summary>
 internal static class SvgRenderer
@@ -22,13 +23,16 @@ internal static class SvgRenderer
     /// uniformly to fit while preserving aspect ratio, then each shape's fill and stroke
     /// are drawn as vector paths.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="ctx">The render context carrying the graphics surface and page state.</param>
     /// <param name="node">The layout node positioning the SVG.</param>
     /// <param name="svgBox">The SVG element to render.</param>
-    public static void Render(XGraphics gfx, LayoutNode node, SvgBox svgBox)
+    public static void Render(RenderContext ctx, LayoutNode node, SvgBox svgBox)
     {
         if (node.Width <= 0 || node.Height <= 0)
             return;
+
+        var gfx = ctx.Graphics;
+        var sb = ctx.StructureBuilder;
 
         var doc = svgBox.GetDocument();
         if (doc.Width <= 0 || doc.Height <= 0)
@@ -45,6 +49,12 @@ internal static class SvgRenderer
         double offsetX = node.X + ((node.Width - scaledWidth) / 2.0);
         double offsetY = node.Y + ((node.Height - scaledHeight) / 2.0);
 
+        if (sb != null)
+        {
+            var bbox = new XRect(offsetX, offsetY, scaledWidth, scaledHeight);
+            sb.BeginElement(PdfIllustrationElementTag.Figure, svgBox.AltText ?? "", bbox);
+        }
+
         var state = gfx.Save();
         gfx.TranslateTransform(offsetX, offsetY);
         gfx.ScaleTransform(scale, scale);
@@ -58,6 +68,8 @@ internal static class SvgRenderer
         }
 
         gfx.Restore(state);
+
+        if (sb != null) sb.End();
     }
 
     #endregion Public Methods

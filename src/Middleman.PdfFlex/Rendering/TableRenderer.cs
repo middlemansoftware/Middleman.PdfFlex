@@ -4,7 +4,9 @@
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Layout;
 using Middleman.PdfFlex.Styling;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
+using Middleman.PdfFlex.Pdf.Structure;
+using Middleman.PdfFlex.UniversalAccessibility;
 
 namespace Middleman.PdfFlex.Rendering;
 
@@ -21,13 +23,16 @@ internal static class TableRenderer
     /// Draws the header row, data rows with optional alternating styles,
     /// and cell borders when a border is specified.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="ctx">The render context carrying the graphics surface and page state.</param>
     /// <param name="node">The layout node positioning the table.</param>
     /// <param name="table">The table element to render.</param>
-    public static void Render(XGraphics gfx, LayoutNode node, Table table)
+    public static void Render(RenderContext ctx, LayoutNode node, Table table)
     {
         if (table.Columns.Count == 0)
             return;
+
+        var gfx = ctx.Graphics;
+        var sb = ctx.StructureBuilder;
 
         double tableX = node.X;
         double tableY = node.Y;
@@ -44,20 +49,27 @@ internal static class TableRenderer
 
         double cursorY = tableY;
 
+        // Open table structure.
+        if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.Table);
+
         // ── Header Row ──────────────────────────────────────────────
         var headerFont = CreateFontFromStyle(table.HeaderStyle, fallbackWeight: FontWeight.Bold);
         var headerColor = table.HeaderStyle?.FontColor ?? Colors.Black;
         var headerBrush = new XSolidBrush(ColorConvert.ToXColor(headerColor));
 
-        // Draw header background.
+        // Draw header background (Artifact).
         if (table.HeaderStyle?.Background != null)
         {
+            if (sb != null) sb.BeginArtifact();
             var bgBrush = new XSolidBrush(ColorConvert.ToXColor(table.HeaderStyle.Background.Color));
             gfx.DrawRectangle(bgBrush, tableX, cursorY, tableWidth, headerRowHeight);
+            if (sb != null) sb.End();
         }
 
+        if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableHeadRowGroup);
         DrawRow(gfx, table, columnWidths, tableX, cursorY, headerRowHeight, headerCellPadding,
-            headerFont, headerBrush, isHeader: true, rowValues: null);
+            headerFont, headerBrush, isHeader: true, rowValues: null, sb: sb);
+        if (sb != null) sb.End(); // THead
 
         cursorY += headerRowHeight;
 
@@ -65,6 +77,9 @@ internal static class TableRenderer
         var cellFont = CreateFontFromStyle(table.CellStyle);
         var cellColor = table.CellStyle?.FontColor ?? Colors.Black;
         var cellBrush = new XSolidBrush(ColorConvert.ToXColor(cellColor));
+
+        int rowCount = 0;
+        if (table.Rows.Count > 0 && sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableBodyRowGroup);
 
         for (int rowIndex = 0; rowIndex < table.Rows.Count; rowIndex++)
         {
@@ -77,26 +92,35 @@ internal static class TableRenderer
                 ? table.AlternateRowStyle
                 : table.RowStyle;
 
-            // Draw row background.
+            // Draw row background (Artifact).
             var bgStyle = rowStyle ?? (isAlternate ? table.AlternateRowStyle : null);
             if (bgStyle?.Background != null)
             {
+                if (sb != null) sb.BeginArtifact();
                 var bgBrush = new XSolidBrush(ColorConvert.ToXColor(bgStyle.Background.Color));
                 gfx.DrawRectangle(bgBrush, tableX, cursorY, tableWidth, dataRowHeight);
+                if (sb != null) sb.End();
             }
 
             DrawRow(gfx, table, columnWidths, tableX, cursorY, dataRowHeight, dataCellPadding,
-                cellFont, cellBrush, isHeader: false, rowValues: table.Rows[rowIndex]);
+                cellFont, cellBrush, isHeader: false, rowValues: table.Rows[rowIndex], sb: sb);
 
             cursorY += dataRowHeight;
+            rowCount++;
         }
 
-        // ── Borders ─────────────────────────────────────────────────
+        if (rowCount > 0 && sb != null) sb.End(); // TBody
+
+        // ── Borders (Artifact) ──────────────────────────────────────
         if (table.Border != null)
         {
+            if (sb != null) sb.BeginArtifact();
             DrawBorders(gfx, table.Border, table, columnWidths, tableX, tableY,
                 tableWidth, cursorY - tableY, headerRowHeight, dataRowHeight);
+            if (sb != null) sb.End();
         }
+
+        if (sb != null) sb.End(); // Table
     }
 
     /// <summary>
@@ -104,7 +128,7 @@ internal static class TableRenderer
     /// Used by the pagination system to split tables across multiple pages, with header
     /// repetition and optional continuation text.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="ctx">The render context carrying the graphics surface and page state.</param>
     /// <param name="table">The table element to render.</param>
     /// <param name="x">The left X position of the table segment.</param>
     /// <param name="y">The top Y position of the table segment.</param>
@@ -119,7 +143,7 @@ internal static class TableRenderer
     /// When <see langword="true"/>, the table's footer row is rendered after the last data row.
     /// </param>
     public static void RenderSegment(
-        XGraphics gfx,
+        RenderContext ctx,
         Table table,
         double x,
         double y,
@@ -132,6 +156,9 @@ internal static class TableRenderer
         if (table.Columns.Count == 0)
             return;
 
+        var gfx = ctx.Graphics;
+        var sb = ctx.StructureBuilder;
+
         double[] columnWidths = ResolveColumnWidths(table, width);
 
         double headerRowHeight = GetHeaderRowHeight(table);
@@ -141,6 +168,9 @@ internal static class TableRenderer
 
         double cursorY = y;
 
+        // Open table structure for this segment.
+        if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.Table);
+
         // ── Header Row ──────────────────────────────────────────────
         var headerFont = CreateFontFromStyle(table.HeaderStyle, fallbackWeight: FontWeight.Bold);
         var headerColor = table.HeaderStyle?.FontColor ?? Colors.Black;
@@ -148,12 +178,16 @@ internal static class TableRenderer
 
         if (table.HeaderStyle?.Background != null)
         {
+            if (sb != null) sb.BeginArtifact();
             var bgBrush = new XSolidBrush(ColorConvert.ToXColor(table.HeaderStyle.Background.Color));
             gfx.DrawRectangle(bgBrush, x, cursorY, width, headerRowHeight);
+            if (sb != null) sb.End();
         }
 
+        if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableHeadRowGroup);
         DrawHeaderRow(gfx, table, columnWidths, x, cursorY, headerRowHeight, headerCellPadding,
-            headerFont, headerBrush, isContinuation);
+            headerFont, headerBrush, isContinuation, sb);
+        if (sb != null) sb.End(); // THead
 
         cursorY += headerRowHeight;
 
@@ -161,6 +195,9 @@ internal static class TableRenderer
         var cellFont = CreateFontFromStyle(table.CellStyle);
         var cellColor = table.CellStyle?.FontColor ?? Colors.Black;
         var cellBrush = new XSolidBrush(ColorConvert.ToXColor(cellColor));
+
+        int rowCount = endRow - startRow;
+        if (rowCount > 0 && sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableBodyRowGroup);
 
         for (int rowIndex = startRow; rowIndex < endRow && rowIndex < table.Rows.Count; rowIndex++)
         {
@@ -172,15 +209,19 @@ internal static class TableRenderer
             var bgStyle = rowStyle ?? (isAlternate ? table.AlternateRowStyle : null);
             if (bgStyle?.Background != null)
             {
+                if (sb != null) sb.BeginArtifact();
                 var bgBrush = new XSolidBrush(ColorConvert.ToXColor(bgStyle.Background.Color));
                 gfx.DrawRectangle(bgBrush, x, cursorY, width, dataRowHeight);
+                if (sb != null) sb.End();
             }
 
             DrawRow(gfx, table, columnWidths, x, cursorY, dataRowHeight, dataCellPadding,
-                cellFont, cellBrush, isHeader: false, rowValues: table.Rows[rowIndex]);
+                cellFont, cellBrush, isHeader: false, rowValues: table.Rows[rowIndex], sb: sb);
 
             cursorY += dataRowHeight;
         }
+
+        if (rowCount > 0 && sb != null) sb.End(); // TBody
 
         // ── Footer Row ──────────────────────────────────────────────
         if (includeFooter && table.FooterRow != null)
@@ -194,22 +235,30 @@ internal static class TableRenderer
 
             if (table.FooterStyle?.Background != null)
             {
+                if (sb != null) sb.BeginArtifact();
                 var bgBrush = new XSolidBrush(ColorConvert.ToXColor(table.FooterStyle.Background.Color));
                 gfx.DrawRectangle(bgBrush, x, cursorY, width, footerRowHeight);
+                if (sb != null) sb.End();
             }
 
+            if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableFooterRowGroup);
             DrawRow(gfx, table, columnWidths, x, cursorY, footerRowHeight, footerCellPadding,
-                footerFont, footerBrush, isHeader: false, rowValues: table.FooterRow);
+                footerFont, footerBrush, isHeader: false, rowValues: table.FooterRow, sb: sb);
+            if (sb != null) sb.End(); // TFoot
 
             cursorY += footerRowHeight;
         }
 
-        // ── Borders ─────────────────────────────────────────────────
+        // ── Borders (Artifact) ──────────────────────────────────────
         if (table.Border != null)
         {
+            if (sb != null) sb.BeginArtifact();
             DrawBorders(gfx, table.Border, table, columnWidths, x, y,
                 width, cursorY - y, headerRowHeight, dataRowHeight);
+            if (sb != null) sb.End();
         }
+
+        if (sb != null) sb.End(); // Table
     }
 
     /// <summary>
@@ -340,8 +389,11 @@ internal static class TableRenderer
         double cellPadding,
         XFont font,
         XSolidBrush brush,
-        bool isContinuation)
+        bool isContinuation,
+        StructureBuilder? sb = null)
     {
+        if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableRow);
+
         double cellX = rowX;
 
         for (int col = 0; col < table.Columns.Count; col++)
@@ -363,10 +415,21 @@ internal static class TableRenderer
                 Math.Max(0, columnWidths[col] - (cellPadding * 2)),
                 rowHeight);
 
+            if (sb != null)
+            {
+                sb.BeginElement(PdfBlockLevelElementTag.TableHeaderCell);
+                // Set Column scope on the TH structure element for screen reader navigation.
+                sb.CurrentStructureElement.TableAttributes.Elements.SetName("/Scope", "/Column");
+            }
+
             gfx.DrawString(cellText, font, brush, cellRect, format);
+
+            if (sb != null) sb.End(); // TH
 
             cellX += columnWidths[col];
         }
+
+        if (sb != null) sb.End(); // TR
     }
 
     /// <summary>
@@ -383,8 +446,11 @@ internal static class TableRenderer
         XFont font,
         XSolidBrush brush,
         bool isHeader,
-        object[]? rowValues)
+        object[]? rowValues,
+        StructureBuilder? sb = null)
     {
+        if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableRow);
+
         double cellX = rowX;
 
         for (int col = 0; col < table.Columns.Count; col++)
@@ -402,10 +468,19 @@ internal static class TableRenderer
                 Math.Max(0, columnWidths[col] - (cellPadding * 2)),
                 rowHeight);
 
+            var cellTag = isHeader
+                ? PdfBlockLevelElementTag.TableHeaderCell
+                : PdfBlockLevelElementTag.TableDataCell;
+            if (sb != null) sb.BeginElement(cellTag);
+
             gfx.DrawString(cellText, font, brush, cellRect, format);
+
+            if (sb != null) sb.End(); // TH or TD
 
             cellX += columnWidths[col];
         }
+
+        if (sb != null) sb.End(); // TR
     }
 
     /// <summary>
@@ -486,7 +561,7 @@ internal static class TableRenderer
     }
 
     /// <summary>
-    /// Maps a PdfFlex <see cref="TextAlign"/> to a PdfSharp <see cref="XStringFormat"/>
+    /// Maps a PdfFlex <see cref="TextAlign"/> to a PdfFlex <see cref="XStringFormat"/>
     /// with vertical centering for table cells.
     /// </summary>
     private static XStringFormat MapTextAlign(TextAlign align)

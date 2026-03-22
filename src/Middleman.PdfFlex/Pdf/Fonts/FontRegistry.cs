@@ -1,15 +1,15 @@
 // Copyright (c) Middleman Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE file in the project root.
 
-using PdfSharp.Fonts;
+using Middleman.PdfFlex.Fonts;
 
 namespace Middleman.PdfFlex.Pdf.Fonts;
 
 /// <summary>
-/// Manages font registration and provides the active font resolver to PdfSharp.
+/// Manages font registration and provides the active font resolver to PdfFlex.
 /// </summary>
 /// <remarks>
-/// <para>Call <see cref="EnsureInitialized"/> before any PdfSharp font operation. This is done
+/// <para>Call <see cref="EnsureInitialized"/> before any PdfFlex font operation. This is done
 /// automatically by the document creation pipeline, so most callers never need to invoke it
 /// directly.</para>
 /// <para>Custom fonts can be registered via <see cref="RegisterFont(string, byte[])"/> or
@@ -29,12 +29,12 @@ public static class FontRegistry
     private static volatile bool _initialized;
 
     /// <summary>
-    /// Guards one-time PdfSharp registration.
+    /// Guards one-time PdfFlex registration.
     /// </summary>
     private static readonly object InitLock = new();
 
     /// <summary>
-    /// Initializes the default font resolver and registers it with PdfSharp.
+    /// Initializes the default font resolver and registers it with PdfFlex.
     /// Safe to call multiple times; only the first call has any effect.
     /// </summary>
     /// <remarks>

@@ -3,7 +3,7 @@
 
 using Middleman.PdfFlex.Layout;
 using Middleman.PdfFlex.Styling;
-using PdfSharp.Drawing;
+using Middleman.PdfFlex.Drawing;
 
 namespace Middleman.PdfFlex.Rendering;
 
@@ -20,7 +20,7 @@ internal static class BorderRenderer
     /// when sides differ, or uses a single rounded rectangle when all sides are uniform
     /// and a corner radius is specified.
     /// </summary>
-    /// <param name="gfx">The PdfSharp graphics surface to draw on.</param>
+    /// <param name="gfx">The PdfFlex graphics surface to draw on.</param>
     /// <param name="node">The layout node whose border to render.</param>
     public static void Render(XGraphics gfx, LayoutNode node)
     {
