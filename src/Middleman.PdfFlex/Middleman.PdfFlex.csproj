@@ -17,6 +17,10 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Pdf\Core\Resources\sRGB2014.icc" LogicalName="Middleman.PdfFlex.Resources.sRGB2014.icc" />
+    <EmbeddedResource Include="Pdf\Fonts\Bundled\NotoSans-Regular.ttf" LogicalName="Middleman.PdfFlex.Fonts.NotoSans-Regular.ttf" />
+    <EmbeddedResource Include="Pdf\Fonts\Bundled\NotoSans-Bold.ttf" LogicalName="Middleman.PdfFlex.Fonts.NotoSans-Bold.ttf" />
+    <EmbeddedResource Include="Pdf\Fonts\Bundled\NotoSans-Italic.ttf" LogicalName="Middleman.PdfFlex.Fonts.NotoSans-Italic.ttf" />
+    <EmbeddedResource Include="Pdf\Fonts\Bundled\NotoSans-BoldItalic.ttf" LogicalName="Middleman.PdfFlex.Fonts.NotoSans-BoldItalic.ttf" />
   </ItemGroup>
 
   <ItemGroup>

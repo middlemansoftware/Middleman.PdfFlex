@@ -20,14 +20,14 @@ namespace Middleman.PdfFlex.Pdf.Fonts;
 ///   <item><description>macOS: <c>/System/Library/Fonts/</c>, <c>/Library/Fonts/</c>, <c>~/Library/Fonts/</c></description></item>
 /// </list>
 /// <para>When system fonts are unavailable (WASM, minimal containers), the resolver falls back to bundled
-/// fonts embedded as resources. The bundled font slot is reserved for Google Noto (Apache 2.0).</para>
+/// fonts embedded as resources. The bundled font slot is reserved for Google Noto (SIL Open Font License 1.1).</para>
 /// </remarks>
 public sealed class DefaultFontResolver : IFontResolver
 {
     /// <summary>
     /// The default font family name used when no specific family is requested.
     /// </summary>
-    internal const string DefaultFamily = "Arial";
+    internal const string DefaultFamily = "NotoSans";
 
     /// <summary>
     /// The bundled fallback face name returned when no system font matches.
@@ -176,6 +176,10 @@ public sealed class DefaultFontResolver : IFontResolver
             if (_scanned)
                 return;
 
+            // Bundled fonts registered first so they're available as the default family.
+            // System fonts scanned second — if NotoSans is installed locally, the system
+            // version takes precedence (first-write-wins via CompareExchange).
+            RegisterBundledFonts();
             ScanSystemFonts();
             _scanned = true;
         }
@@ -368,19 +372,47 @@ public sealed class DefaultFontResolver : IFontResolver
     #region Bundled Fonts
 
     /// <summary>
-    /// Attempts to load a bundled font from embedded resources.
+    /// Loads a bundled NotoSans font from embedded assembly resources.
+    /// NotoSans is licensed under the SIL Open Font License and ships with the library
+    /// as the default font, ensuring consistent rendering without system font dependencies.
     /// </summary>
     /// <param name="faceName">The bundled font face name (e.g., "BundledFonts/NotoSans-Regular").</param>
-    /// <returns>The font bytes, or <c>null</c> if the resource is not yet embedded.</returns>
+    /// <returns>The font bytes, or <c>null</c> if the resource is not found.</returns>
     private static byte[]? LoadBundledFont(string faceName)
     {
-        // Infrastructure placeholder. When actual font files are embedded as resources,
-        // this method will load them via Assembly.GetManifestResourceStream.
-        //
-        // Expected resource naming: Middleman.PdfFlex.Pdf.Fonts.BundledFonts.<fileName>.ttf
-        // The bundled font will be Google Noto Sans (Apache 2.0).
-        _ = faceName;
-        return null;
+        // Map face names to embedded resource logical names.
+        string? resourceName = faceName switch
+        {
+            "BundledFonts/NotoSans-Regular" => "Middleman.PdfFlex.Fonts.NotoSans-Regular.ttf",
+            "BundledFonts/NotoSans-Bold" => "Middleman.PdfFlex.Fonts.NotoSans-Bold.ttf",
+            "BundledFonts/NotoSans-Italic" => "Middleman.PdfFlex.Fonts.NotoSans-Italic.ttf",
+            "BundledFonts/NotoSans-BoldItalic" => "Middleman.PdfFlex.Fonts.NotoSans-BoldItalic.ttf",
+            _ => null
+        };
+
+        if (resourceName is null)
+            return null;
+
+        using var stream = typeof(DefaultFontResolver).Assembly.GetManifestResourceStream(resourceName);
+        if (stream is null)
+            return null;
+
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Registers the bundled NotoSans family so it can be resolved by family name
+    /// without requiring system font installation. Called during <see cref="EnsureScanned"/>.
+    /// </summary>
+    private void RegisterBundledFonts()
+    {
+        var entry = _families.GetOrAdd("NotoSans", _ => new FontFamilyEntry());
+        Interlocked.CompareExchange(ref entry.Regular, "BundledFonts/NotoSans-Regular", null);
+        Interlocked.CompareExchange(ref entry.Bold, "BundledFonts/NotoSans-Bold", null);
+        Interlocked.CompareExchange(ref entry.Italic, "BundledFonts/NotoSans-Italic", null);
+        Interlocked.CompareExchange(ref entry.BoldItalic, "BundledFonts/NotoSans-BoldItalic", null);
     }
 
     #endregion

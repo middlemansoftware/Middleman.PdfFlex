@@ -204,11 +204,39 @@ public static class LayoutEngine
 
     /// <summary>
     /// Measures an SvgBox using the SVG document's intrinsic dimensions.
+    /// When the user specifies only one dimension (Width or Height) in the style,
+    /// the other is computed from the viewBox aspect ratio so the SVG scales
+    /// proportionally without requiring manual width/height calculations.
     /// </summary>
     private static (double Width, double Height) MeasureSvgBox(SvgBox svg)
     {
         var doc = svg.GetDocument();
-        return (doc.Width, doc.Height);
+        double vbW = doc.Width;
+        double vbH = doc.Height;
+
+        // Avoid division by zero for degenerate viewBoxes.
+        if (vbW <= 0 || vbH <= 0)
+            return (vbW, vbH);
+
+        double aspectRatio = vbW / vbH;
+
+        double? styleW = ResolveStyleDimension(svg.Style?.Width);
+        double? styleH = ResolveStyleDimension(svg.Style?.Height);
+
+        if (styleW.HasValue && !styleH.HasValue)
+        {
+            // Width specified, compute height from aspect ratio.
+            return (styleW.Value, styleW.Value / aspectRatio);
+        }
+
+        if (styleH.HasValue && !styleW.HasValue)
+        {
+            // Height specified, compute width from aspect ratio.
+            return (styleH.Value * aspectRatio, styleH.Value);
+        }
+
+        // Both or neither specified — use raw viewBox dimensions (style overrides applied later).
+        return (vbW, vbH);
     }
 
     /// <summary>

@@ -3,6 +3,7 @@
 
 using Middleman.PdfFlex.Drawing;
 using Middleman.PdfFlex.Pdf;
+using Middleman.PdfFlex.Pdf.AcroForms;
 using Middleman.PdfFlex.Pdf.Annotations;
 using Middleman.PdfFlex.Pdf.Structure;
 
@@ -495,6 +496,88 @@ namespace Middleman.PdfFlex.UniversalAccessibility
         {
             annotation.Elements.SetString(PdfAnnotation.Keys.Contents, altText);
             AddAnnotationToStructureElementOnPage(linkStructureElement, annotation, page);
+        }
+
+        /// <summary>
+        /// Creates a /Form structure element at the current position in the element stack,
+        /// adds an OBJR child referencing the widget annotation, sets /Tabs /S on the
+        /// page, and registers the widget in the parent tree. The /Form element contains
+        /// exactly one child (the OBJR) as required by PDF/UA-1 clause 7.18.4.
+        /// The caller must have already added the widget to the page's /Annots array.
+        /// </summary>
+        /// <param name="widget">The AcroForm field dictionary that doubles as a widget annotation.</param>
+        /// <param name="page">The page the widget annotation belongs to.</param>
+        internal void AssociateFormFieldWidget(PdfAcroField widget, PdfPage page)
+        {
+            EndMarkedContentsWithId();
+
+            var ste = CreateStructureElement("Form");
+
+            // Tab order must be set to "/S" (Structure) on pages with Annotations.
+            if (page.Elements.GetName(PdfPage.Keys.Tabs) != "/S")
+                page.Elements.SetName(PdfPage.Keys.Tabs, "/S");
+
+            var steK = new PdfArray();
+            ste.Elements.SetObject(PdfStructureElement.Keys.K, steK);
+
+            var objr = new PdfObjectReference();
+            objr.Elements.SetReference(PdfObjectReference.Keys.Obj, widget);
+            objr.Elements.SetReference(PdfObjectReference.Keys.Pg, page);
+            steK.Elements.Add(objr);
+
+            AddFormWidgetToParentTree(ste, widget);
+        }
+
+        /// <summary>
+        /// Adds the structure element to the ParentTree for a form field widget annotation.
+        /// Sets the widget's /StructParent key to the index of the structure element in
+        /// the ParentTree. Equivalent to
+        /// <see cref="AddToParentTree(PdfStructureElement, PdfAnnotation)"/>
+        /// but accepts <see cref="PdfAcroField"/> instead of <see cref="PdfAnnotation"/>.
+        /// </summary>
+        void AddFormWidgetToParentTree(PdfStructureElement ste, PdfAcroField widget)
+        {
+            var structTreeRoot = UaManager.StructureTreeRoot;
+            var parentTreeRoot = structTreeRoot.Elements.GetDictionary(PdfStructureTreeRoot.Keys.ParentTree) as PdfNumberTreeNode;
+            Debug.Assert(parentTreeRoot != null);
+            var parentTreeRootNums = parentTreeRoot.Elements.GetArray(PdfNumberTreeNode.Keys.Nums);
+
+            if (parentTreeRootNums == null)
+            {
+                parentTreeRootNums = new PdfArray();
+                parentTreeRoot.Elements.SetObject(PdfNumberTreeNode.Keys.Nums, parentTreeRootNums);
+            }
+
+            var parentTreeNextKey = structTreeRoot.Elements.GetInteger(PdfStructureTreeRoot.Keys.ParentTreeNextKey);
+
+            // Get /StructParent of widget.
+            var structParentsItem = widget.Elements.GetValue(PdfAnnotation.Keys.StructParent);
+            var hasStructParents = structParentsItem != null;
+
+            if (!hasStructParents)
+            {
+                widget.Elements.SetInteger(PdfAnnotation.Keys.StructParent, parentTreeNextKey);
+                structTreeRoot.Elements.SetInteger(PdfStructureTreeRoot.Keys.ParentTreeNextKey, parentTreeNextKey + 1);
+            }
+
+            var structParents = new PdfInteger(widget.Elements.GetInteger(PdfAnnotation.Keys.StructParent));
+
+            var isInParentTree = parentTreeRootNums.Elements.OfType<PdfInteger>().Any(x => x.Value == structParents.Value);
+            Debug.Assert(hasStructParents == isInParentTree);
+
+            if (!isInParentTree)
+            {
+                var count = parentTreeRootNums.Elements.Count;
+                var lastKey = count > 0 ? parentTreeRootNums.Elements[count - 2] as PdfInteger : new PdfInteger(-1);
+
+                Debug.Assert(lastKey != null && lastKey.Value + 1 == structParents.Value, "The values should be continuous.");
+
+                parentTreeRoot.AddNumber(structParents.Value, ste);
+            }
+            else
+            {
+                Debug.Assert(false, "StructureElement should not already be referenced in ParentTree.");
+            }
         }
 
         /// <summary>
