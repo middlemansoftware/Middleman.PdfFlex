@@ -116,5 +116,51 @@ public class Document
         return this;
     }
 
+    /// <summary>
+    /// Pre-fills form field values by matching field names. Walks the entire element
+    /// tree and sets <see cref="FormField.Value"/> on any <see cref="FormField"/> whose
+    /// <see cref="FormField.Name"/> matches a key in the provided dictionary.
+    /// For <see cref="FormCheckbox"/> fields, the value "true" (case-insensitive) sets
+    /// <see cref="FormCheckbox.Checked"/> to true. For <see cref="FormDropdown"/> fields,
+    /// the value is applied to <see cref="FormDropdown.SelectedOption"/>.
+    /// Unknown field names are silently ignored.
+    /// </summary>
+    /// <param name="values">A dictionary of field name to value mappings.</param>
+    /// <returns>This document instance for fluent chaining.</returns>
+    public Document SetFieldValues(Dictionary<string, string> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        foreach (var child in Children)
+            SetFieldValuesRecursive(child, values);
+
+        return this;
+    }
+
     #endregion Public Methods
+
+    #region Private Methods
+
+    /// <summary>Recursively walks the element tree to set form field values.</summary>
+    private static void SetFieldValuesRecursive(Element element, Dictionary<string, string> values)
+    {
+        if (element is FormField field && values.TryGetValue(field.Name, out var value))
+        {
+            field.Value = value;
+
+            if (field is FormCheckbox checkbox)
+                checkbox.Checked = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+            if (field is FormDropdown dropdown)
+                dropdown.SelectedOption = value;
+        }
+
+        if (element is Container container)
+        {
+            foreach (var child in container.Children)
+                SetFieldValuesRecursive(child, values);
+        }
+    }
+
+    #endregion Private Methods
 }

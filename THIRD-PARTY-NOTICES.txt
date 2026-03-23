@@ -24,13 +24,16 @@ dependencies. Compiled with STBSHARP_INTERNAL so all types are internal.
 JPEG files are handled via passthrough (not decoded by StbImageSharp).
 
 ────────────────────────────────────────
-Google Noto Fonts
-License: Apache 2.0 (SIL Open Font License for some variants)
-Source: https://github.com/googlefonts/noto-fonts
+Google Noto Sans (Latin, Greek, Cyrillic)
+License: SIL Open Font License 1.1
+Copyright: The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+Source: https://github.com/notofonts/latin-greek-cyrillic
 ────────────────────────────────────────
 
-The Noto font family by Google is bundled as embedded resources for universal
-language and script coverage as a fallback when system fonts are unavailable.
+NotoSans font files (Regular, Bold, Italic, BoldItalic) are bundled as embedded
+resources for consistent rendering when system fonts are unavailable. Licensed
+under the SIL Open Font License, Version 1.1. The full license text is
+reproduced in Pdf/Fonts/Bundled/NotoSans-LICENSE.txt and licenses/NotoFonts.txt.
 
 ────────────────────────────────────────
 Microsoft.Extensions.Logging.Abstractions 10.0.5

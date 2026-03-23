@@ -33,11 +33,25 @@ public static class DocumentRenderer
     /// </exception>
     public static void Render(Document document, string filePath)
     {
+        Render(document, filePath, options: null);
+    }
+
+    /// <summary>
+    /// Renders a document to a PDF file at the specified path with render options.
+    /// </summary>
+    /// <param name="document">The document to render.</param>
+    /// <param name="filePath">The output file path for the generated PDF.</param>
+    /// <param name="options">Optional render options controlling output behavior.</param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="document"/> or <paramref name="filePath"/> is null.
+    /// </exception>
+    public static void Render(Document document, string filePath, RenderOptions? options)
+    {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(filePath);
 
         using var stream = File.Create(filePath);
-        Render(document, stream);
+        Render(document, stream, options);
     }
 
     /// <summary>
@@ -50,8 +64,24 @@ public static class DocumentRenderer
     /// </exception>
     public static void Render(Document document, Stream stream)
     {
+        Render(document, stream, options: null);
+    }
+
+    /// <summary>
+    /// Renders a document to a PDF written to the specified stream with render options.
+    /// </summary>
+    /// <param name="document">The document to render.</param>
+    /// <param name="stream">The output stream for the generated PDF.</param>
+    /// <param name="options">Optional render options controlling output behavior.</param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="document"/> or <paramref name="stream"/> is null.
+    /// </exception>
+    public static void Render(Document document, Stream stream, RenderOptions? options)
+    {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(stream);
+
+        var renderOptions = options ?? new RenderOptions();
 
         ValidateAccessibility(document);
         ValidateHeaderFooter(document);
@@ -194,7 +224,8 @@ public static class DocumentRenderer
             using (var gfx = XGraphics.FromPdfPage(pdfPage))
             {
                 var ctx = new RenderContext(gfx, pageNum, totalPages, pdfDoc.Conformance, sb,
-                    anchorRegistry, pdfPage, pendingLinks, pageHeight);
+                    anchorRegistry, pdfPage, pendingLinks, pageHeight, pdfDoc, renderOptions,
+                    document.DefaultStyle?.FontFamily);
 
                 foreach (var action in allPages[pageIdx])
                 {
@@ -238,10 +269,24 @@ public static class DocumentRenderer
     /// </exception>
     public static byte[] RenderToBytes(Document document)
     {
+        return RenderToBytes(document, options: null);
+    }
+
+    /// <summary>
+    /// Renders a document and returns the PDF as a byte array with render options.
+    /// </summary>
+    /// <param name="document">The document to render.</param>
+    /// <param name="options">Optional render options controlling output behavior.</param>
+    /// <returns>The generated PDF as a byte array.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="document"/> is null.
+    /// </exception>
+    public static byte[] RenderToBytes(Document document, RenderOptions? options)
+    {
         ArgumentNullException.ThrowIfNull(document);
 
         using var ms = new MemoryStream();
-        Render(document, ms);
+        Render(document, ms, options);
         return ms.ToArray();
     }
 
@@ -257,11 +302,25 @@ public static class DocumentRenderer
     /// </exception>
     public static void RenderStreaming(Document document, string filePath)
     {
+        RenderStreaming(document, filePath, options: null);
+    }
+
+    /// <summary>
+    /// Renders a document to a PDF file using streaming mode with render options.
+    /// </summary>
+    /// <param name="document">The document to render.</param>
+    /// <param name="filePath">The output file path for the generated PDF.</param>
+    /// <param name="options">Optional render options controlling output behavior.</param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="document"/> or <paramref name="filePath"/> is null.
+    /// </exception>
+    public static void RenderStreaming(Document document, string filePath, RenderOptions? options)
+    {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(filePath);
 
         using var stream = File.Create(filePath);
-        RenderStreaming(document, stream);
+        RenderStreaming(document, stream, options);
     }
 
     /// <summary>
@@ -276,8 +335,24 @@ public static class DocumentRenderer
     /// </exception>
     public static void RenderStreaming(Document document, Stream stream)
     {
+        RenderStreaming(document, stream, options: null);
+    }
+
+    /// <summary>
+    /// Renders a document to a PDF stream using streaming mode with render options.
+    /// </summary>
+    /// <param name="document">The document to render.</param>
+    /// <param name="stream">The output stream for the generated PDF.</param>
+    /// <param name="options">Optional render options controlling output behavior.</param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown when <paramref name="document"/> or <paramref name="stream"/> is null.
+    /// </exception>
+    public static void RenderStreaming(Document document, Stream stream, RenderOptions? options)
+    {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(stream);
+
+        var renderOptions = options ?? new RenderOptions();
 
         ValidateAccessibility(document);
         ValidateHeaderFooter(document);
@@ -430,7 +505,7 @@ public static class DocumentRenderer
                 contentWidth, defaultContentHeight, headerHeight, footerHeight,
                 ref currentPageNumber, totalPages,
                 firstPageContentHeight, firstPageHeaderHeight, firstPageFooterHeight,
-                anchorRegistry, pendingLinks, pdfPages);
+                anchorRegistry, pendingLinks, pdfPages, renderOptions);
         }
 
         // Resolve pending internal links. In streaming mode, pages may have been
@@ -586,6 +661,10 @@ public static class DocumentRenderer
                 if (sb != null) sb.BeginArtifact();
                 DividerRenderer.Render(gfx, node, div);
                 if (sb != null) sb.End();
+                break;
+
+            case FormField ff:
+                FormFieldRenderer.Render(ctx, node, ff);
                 break;
 
             case Table tbl:
@@ -1351,7 +1430,8 @@ public static class DocumentRenderer
         double firstPageFooterHeight = 0,
         AnchorRegistry? anchorRegistry = null,
         List<PendingLink>? pendingLinks = null,
-        List<PdfPage>? pdfPages = null)
+        List<PdfPage>? pdfPages = null,
+        RenderOptions? renderOptions = null)
     {
         // Default margins for pages 2+.
         double defaultMarginTop = document.Margins.Top + docHeaderHeight;
@@ -1391,7 +1471,8 @@ public static class DocumentRenderer
             using (var gfx = XGraphics.FromPdfPage(pdfPage))
             {
                 var ctx = new RenderContext(gfx, pageNumber, totalPages, pdfDoc.Conformance, sb,
-                    anchorRegistry, pdfPage, pendingLinks, pageHeight);
+                    anchorRegistry, pdfPage, pendingLinks, pageHeight, pdfDoc, renderOptions,
+                    document.DefaultStyle?.FontFamily);
 
                 foreach (var action in currentPageActions)
                     action(ctx);
@@ -1746,6 +1827,13 @@ public static class DocumentRenderer
                 "Headers and footers cannot contain page break elements.");
         }
 
+        if (element is FormField)
+        {
+            throw new InvalidOperationException(
+                $"FormField is not allowed in Document.{location}. " +
+                "Headers and footers cannot contain form field elements.");
+        }
+
         if (element is Table)
         {
             throw new InvalidOperationException(
@@ -1811,7 +1899,8 @@ public static class DocumentRenderer
         // must not contain marked content sequences (PDF/UA-1 clause 7.1, test 2).
         var artifactCtx = sb != null
             ? new RenderContext(ctx.Graphics, ctx.CurrentPage, ctx.TotalPages, ctx.Conformance,
-                structureBuilder: null, ctx.AnchorRegistry, ctx.Page, ctx.PendingLinks, ctx.PageHeight)
+                structureBuilder: null, ctx.AnchorRegistry, ctx.Page, ctx.PendingLinks, ctx.PageHeight,
+                ctx.PdfDocument, ctx.Options, ctx.DefaultFontFamily)
             : ctx;
         RenderNode(artifactCtx, node);
 
@@ -1939,6 +2028,9 @@ public static class DocumentRenderer
 
             var annotation = PdfLinkAnnotation.CreateDocumentLink(pdfRect, targetPage, destPoint);
 
+            // PDF/A requires all annotations to have the Print flag set (F bit 3 = value 4).
+            annotation.Flags = PdfAnnotationFlags.Print;
+
             if (link.StructureBuilder != null && link.LinkStructureElement != null)
             {
                 // PDF/UA: associate the annotation with the /Link structure element
@@ -1973,6 +2065,9 @@ public static class DocumentRenderer
         var pdfRect = new PdfRectangle(rect.X, pdfRectY1, rect.X + rect.Width, pdfRectY2);
 
         var annotation = PdfLinkAnnotation.CreateWebLink(pdfRect, url);
+
+        // PDF/A requires all annotations to have the Print flag set (F bit 3 = value 4).
+        annotation.Flags = PdfAnnotationFlags.Print;
 
         if (sb != null)
         {

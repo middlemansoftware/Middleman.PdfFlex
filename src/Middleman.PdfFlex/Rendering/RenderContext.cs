@@ -10,7 +10,7 @@ namespace Middleman.PdfFlex.Rendering;
 /// <summary>
 /// Carries rendering state through the render pipeline. Provides the graphics surface,
 /// current page number, total page count, document conformance profile, anchor registry,
-/// and link collection.
+/// link collection, PDF document reference, and render options.
 /// </summary>
 internal sealed class RenderContext
 {
@@ -58,6 +58,25 @@ internal sealed class RenderContext
     /// </summary>
     public double PageHeight { get; }
 
+    /// <summary>
+    /// Gets the underlying PDF document, or null when not available.
+    /// Used by <see cref="FormFieldRenderer"/> to register AcroForm entries.
+    /// </summary>
+    public PdfDocument? PdfDocument { get; }
+
+    /// <summary>
+    /// Gets the render options controlling output behavior such as form flattening.
+    /// Never null; defaults to a default-constructed instance.
+    /// </summary>
+    public RenderOptions Options { get; }
+
+    /// <summary>
+    /// Gets the document-level default font family from <see cref="Elements.Document.DefaultStyle"/>.
+    /// Used as the final fallback when resolving font families in form field rendering.
+    /// Null when no default style is set on the document.
+    /// </summary>
+    public string? DefaultFontFamily { get; }
+
     #endregion Public Properties
 
     #region Constructors
@@ -89,6 +108,7 @@ internal sealed class RenderContext
         TotalPages = totalPages;
         Conformance = conformance;
         StructureBuilder = structureBuilder;
+        Options = new RenderOptions();
     }
 
     /// <summary>Creates a new render context with full link and anchor support.</summary>
@@ -104,10 +124,17 @@ internal sealed class RenderContext
     /// <param name="page">The current PDF page for annotation creation.</param>
     /// <param name="pendingLinks">The collection for deferred internal link annotations.</param>
     /// <param name="pageHeight">The page height in points for coordinate conversion.</param>
+    /// <param name="pdfDocument">The PDF document for AcroForm registration. Null when not available.</param>
+    /// <param name="options">Render options. Null uses default options.</param>
+    /// <param name="defaultFontFamily">
+    /// The document-level default font family. Null when no default style is set.
+    /// </param>
     public RenderContext(XGraphics graphics, int currentPage, int totalPages,
         PdfConformance conformance, StructureBuilder? structureBuilder,
         AnchorRegistry? anchorRegistry, PdfPage? page,
-        List<PendingLink>? pendingLinks, double pageHeight)
+        List<PendingLink>? pendingLinks, double pageHeight,
+        PdfDocument? pdfDocument = null, RenderOptions? options = null,
+        string? defaultFontFamily = null)
     {
         Graphics = graphics;
         CurrentPage = currentPage;
@@ -118,6 +145,9 @@ internal sealed class RenderContext
         Page = page;
         PendingLinks = pendingLinks;
         PageHeight = pageHeight;
+        PdfDocument = pdfDocument;
+        Options = options ?? new RenderOptions();
+        DefaultFontFamily = defaultFontFamily;
     }
 
     #endregion Constructors
