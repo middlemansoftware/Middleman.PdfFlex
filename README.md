@@ -6,6 +6,7 @@ Declarative PDF layout engine for .NET. Flexbox layout, PDF/A and PDF/UA conform
 
 - Flexbox layout - rows, columns, flex-grow/shrink, justify, align, gap, padding, margin
 - CSS-like styling - cascading properties, typed units (pt, mm, in, cm, %, fr)
+- Headers & footers - full-bleed by default (full page width), first-page override (`FirstPageHeader`/`FirstPageFooter`), `{page}`/`{pages}` tokens, automatic PDF/UA artifact tagging
 - Automatic pagination with page breaks
 - Tables with repeated headers, continuation text, orphan prevention, and automatic page splitting
 - Watermarks - pre-blended when transparency is not allowed (PDF/A-1), native alpha otherwise
@@ -86,6 +87,8 @@ doc.Conformance = PdfConformance.PdfA2a.With(PdfConformance.PdfUA1);
 PDFsharp's PDF/A: a single `SetPdfA()` method, no level parameter, XMP hardcoded to PDF/A-1a. Described in their docs as "very early state."
 
 PDF/UA automatic vs manual: PDF/UA requires a structure tree mapping every piece of content to its semantic role (paragraph, heading, table cell, figure, etc.). Most libraries require the developer to manually tag each element. QuestPDF recently added manual semantic methods (`SemanticHeader1()`, `SemanticImage()`, etc.). PDFsharp requires manual `BeginElement`/`End` calls around every draw operation. PdfFlex's layout engine already knows the semantic role of every element in the tree, so the tagging happens automatically during rendering with no additional API calls.
+
+Headers & footers: PdfFlex renders headers and footers at full page width by default. Users control inset with padding on the element itself, using the same styling primitives as everything else. QuestPDF constrains headers to the margin box with no full-bleed option (colored bars edge-to-edge require the Background/Layers API as a workaround). MigraDoc constrains to a fixed header zone defined by `HeaderDistance`. IronPDF injects headers as separate HTML templates in a fixed margin zone outside the content flow. iText 7 gives full coordinate control via page event handlers but no declarative model. First-page-different is a first-class property in PdfFlex (`FirstPageHeader`/`FirstPageFooter`); QuestPDF handles it with `ShowOnce`/`SkipOnce` workarounds, and IronPDF requires separate rendering logic.
 
 ## License
 

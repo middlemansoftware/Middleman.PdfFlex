@@ -60,6 +60,24 @@ public class Document
     /// <summary>Gets or sets the default style applied to all elements unless overridden.</summary>
     public Style? DefaultStyle { get; set; }
 
+    /// <summary>Gets or sets the optional header rendered at the top of every page.</summary>
+    public Element? Header { get; set; }
+
+    /// <summary>Gets or sets the optional footer rendered at the bottom of every page.</summary>
+    public Element? Footer { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional first-page header override. When set, replaces <see cref="Header"/>
+    /// on page 1. Set to an empty element to suppress the header on page 1. When null, uses <see cref="Header"/>.
+    /// </summary>
+    public Element? FirstPageHeader { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional first-page footer override. When set, replaces <see cref="Footer"/>
+    /// on page 1. Set to an empty element to suppress the footer on page 1. When null, uses <see cref="Footer"/>.
+    /// </summary>
+    public Element? FirstPageFooter { get; set; }
+
     #endregion Public Properties
 
     #region Constructors
