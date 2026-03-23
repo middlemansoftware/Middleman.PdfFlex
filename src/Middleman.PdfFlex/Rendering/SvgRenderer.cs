@@ -362,6 +362,8 @@ internal static class SvgRenderer
         XGraphics gfx, string text, XFont font, XBrush brush,
         double x, double y, float letterSpacing)
     {
+
+
         double cursorX = x;
         var enumerator = StringInfo.GetTextElementEnumerator(text);
         bool isFirst = true;
