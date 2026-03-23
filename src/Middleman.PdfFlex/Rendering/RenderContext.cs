@@ -9,7 +9,8 @@ namespace Middleman.PdfFlex.Rendering;
 
 /// <summary>
 /// Carries rendering state through the render pipeline. Provides the graphics surface,
-/// current page number, total page count, and document conformance profile.
+/// current page number, total page count, document conformance profile, anchor registry,
+/// and link collection.
 /// </summary>
 internal sealed class RenderContext
 {
@@ -32,6 +33,30 @@ internal sealed class RenderContext
     /// does not require tagged structure.
     /// </summary>
     public StructureBuilder? StructureBuilder { get; }
+
+    /// <summary>
+    /// Gets the anchor registry for tracking named destinations across pages,
+    /// or null when anchor tracking is not active.
+    /// </summary>
+    public AnchorRegistry? AnchorRegistry { get; }
+
+    /// <summary>
+    /// Gets the current PDF page, or null when not available.
+    /// Used for creating link annotations.
+    /// </summary>
+    public PdfPage? Page { get; }
+
+    /// <summary>
+    /// Gets the list of pending internal links to be resolved after all pages are rendered.
+    /// Null when link tracking is not active.
+    /// </summary>
+    public List<PendingLink>? PendingLinks { get; }
+
+    /// <summary>
+    /// Gets the page height in points, used for coordinate conversion between
+    /// XGraphics (top-left origin) and PDF (bottom-left origin) coordinate systems.
+    /// </summary>
+    public double PageHeight { get; }
 
     #endregion Public Properties
 
@@ -64,6 +89,35 @@ internal sealed class RenderContext
         TotalPages = totalPages;
         Conformance = conformance;
         StructureBuilder = structureBuilder;
+    }
+
+    /// <summary>Creates a new render context with full link and anchor support.</summary>
+    /// <param name="graphics">The PDF graphics surface.</param>
+    /// <param name="currentPage">The 1-based current page number.</param>
+    /// <param name="totalPages">The total number of pages.</param>
+    /// <param name="conformance">The document's conformance profile.</param>
+    /// <param name="structureBuilder">
+    /// The structure builder for PDF/UA tagging. Null when the document does not require
+    /// tagged structure.
+    /// </param>
+    /// <param name="anchorRegistry">The anchor registry for named destinations. Null when not tracking.</param>
+    /// <param name="page">The current PDF page for annotation creation.</param>
+    /// <param name="pendingLinks">The collection for deferred internal link annotations.</param>
+    /// <param name="pageHeight">The page height in points for coordinate conversion.</param>
+    public RenderContext(XGraphics graphics, int currentPage, int totalPages,
+        PdfConformance conformance, StructureBuilder? structureBuilder,
+        AnchorRegistry? anchorRegistry, PdfPage? page,
+        List<PendingLink>? pendingLinks, double pageHeight)
+    {
+        Graphics = graphics;
+        CurrentPage = currentPage;
+        TotalPages = totalPages;
+        Conformance = conformance;
+        StructureBuilder = structureBuilder;
+        AnchorRegistry = anchorRegistry;
+        Page = page;
+        PendingLinks = pendingLinks;
+        PageHeight = pageHeight;
     }
 
     #endregion Constructors

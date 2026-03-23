@@ -7,6 +7,8 @@ Declarative PDF layout engine for .NET. Flexbox layout, PDF/A and PDF/UA conform
 - Flexbox layout - rows, columns, flex-grow/shrink, justify, align, gap, padding, margin
 - CSS-like styling - cascading properties, typed units (pt, mm, in, cm, %, fr)
 - Headers & footers - full-bleed by default (full page width), first-page override (`FirstPageHeader`/`FirstPageFooter`), `{page}`/`{pages}` tokens, automatic PDF/UA artifact tagging
+- Links and navigation - internal anchors (`Element.Id`), external URI links, `LinkTarget` on text/images/SVG/spans, auto-generated PDF outlines (bookmarks) from headings, `{page:anchor}` tokens for cross-references
+- Table of contents - `TocBuilder` walks the heading tree and generates linked TOC entries with page numbers that resolve automatically during rendering
 - Automatic pagination with page breaks
 - Tables with repeated headers, continuation text, orphan prevention, and automatic page splitting
 - Watermarks - pre-blended when transparency is not allowed (PDF/A-1), native alpha otherwise

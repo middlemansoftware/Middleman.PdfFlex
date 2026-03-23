@@ -28,6 +28,12 @@ public class SvgBox : Element
     /// <summary>Gets or sets the alt text for PDF/UA accessibility tagging.</summary>
     public string? AltText { get; set; }
 
+    /// <summary>
+    /// Gets or sets the link target. URLs starting with http:// or https:// create URI links.
+    /// Other values create internal GoTo links to the element with a matching Id.
+    /// </summary>
+    public string? LinkTarget { get; set; }
+
     #endregion Public Properties
 
     #region Constructors

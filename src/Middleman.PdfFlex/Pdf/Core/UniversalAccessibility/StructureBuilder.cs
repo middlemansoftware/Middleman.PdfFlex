@@ -464,6 +464,75 @@ namespace Middleman.PdfFlex.UniversalAccessibility
         }
 
         /// <summary>
+        /// Creates a /Link structure element at the current position in the element stack
+        /// and returns it. Call this during rendering when the stack is correctly positioned,
+        /// then pass the result to <see cref="AssociateLinkAnnotation(PdfLinkAnnotation, PdfPage, string, PdfStructureElement)"/>
+        /// during deferred link resolution.
+        /// </summary>
+        /// <returns>The newly created /Link structure element.</returns>
+        internal PdfStructureElement CreateLinkStructureElement()
+        {
+            return CreateStructureElement(TagToString(PdfInlineLevelElementTag.Link));
+        }
+
+        /// <summary>
+        /// Associates a link annotation with a pre-created /Link structure element on
+        /// the specified page. Used for deferred internal links whose structure element
+        /// was created during rendering (when the element stack was correctly positioned).
+        /// Sets the annotation's /Contents key for accessibility (PDF/UA-1 clause 7.18.1/7.18.5)
+        /// and the page's /Tabs key to /S (PDF/UA-1 clause 7.18.3).
+        /// </summary>
+        /// <param name="annotation">The link annotation to associate.</param>
+        /// <param name="page">The page containing the annotation.</param>
+        /// <param name="altText">The alternative text describing the link.</param>
+        /// <param name="linkStructureElement">
+        /// The /Link structure element created during rendering via
+        /// <see cref="CreateLinkStructureElement"/>.
+        /// </param>
+        internal void AssociateLinkAnnotation(
+            PdfLinkAnnotation annotation, PdfPage page, string altText,
+            PdfStructureElement linkStructureElement)
+        {
+            annotation.Elements.SetString(PdfAnnotation.Keys.Contents, altText);
+            AddAnnotationToStructureElementOnPage(linkStructureElement, annotation, page);
+        }
+
+        /// <summary>
+        /// Adds a PdfObjectReference referencing the annotation and the specified page
+        /// to the given structure element. Unlike <see cref="AddAnnotationToStructureElement"/>,
+        /// this overload accepts an explicit page parameter so it can be used after rendering
+        /// when the UAManager's current page may differ.
+        /// </summary>
+        /// <param name="ste">The structure element.</param>
+        /// <param name="annotation">The annotation.</param>
+        /// <param name="page">The page the annotation belongs to.</param>
+        void AddAnnotationToStructureElementOnPage(PdfStructureElement ste, PdfAnnotation annotation, PdfPage page)
+        {
+            page.Annotations.Add(annotation);
+
+            // Tab order must be set to "/S" (Structure) on pages with Annotations.
+            if (page.Elements.GetName(PdfPage.Keys.Tabs) != "/S")
+                page.Elements.SetName(PdfPage.Keys.Tabs, "/S");
+
+            var steK = ste.Elements.GetArray(PdfStructureElement.Keys.K);
+
+            // Create /K PdfArray for StructureElement, if necessary.
+            if (steK == null)
+            {
+                steK = new PdfArray();
+                ste.Elements.SetObject(PdfStructureElement.Keys.K, steK);
+            }
+
+            var objr = new PdfObjectReference();
+            objr.Elements.SetReference(PdfObjectReference.Keys.Obj, annotation);
+            objr.Elements.SetReference(PdfObjectReference.Keys.Pg, page);
+
+            steK.Elements.Add(objr);
+
+            AddToParentTree(ste, annotation);
+        }
+
+        /// <summary>
         /// Called when AddPage was issued.
         /// </summary>
         internal void OnAddPage()

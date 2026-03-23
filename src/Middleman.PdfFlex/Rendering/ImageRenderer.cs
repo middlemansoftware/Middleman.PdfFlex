@@ -3,6 +3,7 @@
 
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Layout;
+using Middleman.PdfFlex.Pdf.Structure;
 using Middleman.PdfFlex.Drawing;
 using Middleman.PdfFlex.UniversalAccessibility;
 
@@ -60,6 +61,28 @@ internal static class ImageRenderer
             gfx.DrawImage(image, offsetX, offsetY, drawWidth, drawHeight);
 
             if (sb != null) sb.End();
+
+            // Create link annotation covering the drawn image area.
+            string? linkTarget = imageBox.LinkTarget;
+            if (!string.IsNullOrEmpty(linkTarget) && ctx.Page != null)
+            {
+                var linkRect = new XRect(offsetX, offsetY, drawWidth, drawHeight);
+                if (DocumentRenderer.IsExternalLink(linkTarget))
+                {
+                    DocumentRenderer.CreateUriLinkAnnotation(
+                        ctx.Page, linkRect, linkTarget, ctx.PageHeight, sb,
+                        imageBox.AltText ?? linkTarget);
+                }
+                else
+                {
+                    // Create the /Link structure element now while the element
+                    // stack is correctly positioned. The annotation will be
+                    // associated with this element during deferred resolution.
+                    PdfStructureElement? linkSte = sb?.CreateLinkStructureElement();
+                    DocumentRenderer.QueueInternalLink(
+                        ctx, linkRect, linkTarget, imageBox.AltText, linkSte);
+                }
+            }
         }
         finally
         {
