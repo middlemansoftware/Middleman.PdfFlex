@@ -66,7 +66,7 @@ The output PDF has a complete structure tree (/H1, /P, /Figure with alt text), d
 doc.Conformance = PdfConformance.PdfA2a.With(PdfConformance.PdfUA1);
 ```
 
-## How It Compares
+## PdfFlex vs. Other .NET PDF Libraries:
 
 | | PdfFlex | QuestPDF | PDFsharp | IronPDF | Aspose.PDF |
 |:--|:--:|:--:|:--:|:--:|:--:|
