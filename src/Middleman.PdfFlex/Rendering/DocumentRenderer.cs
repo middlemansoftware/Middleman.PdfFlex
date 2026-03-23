@@ -2,11 +2,14 @@
 // Licensed under the MIT License. See LICENSE file in the project root.
 
 using Middleman.PdfFlex.Elements;
+using Middleman.PdfFlex.Helpers;
 using Middleman.PdfFlex.Layout;
 using Middleman.PdfFlex.Pdf.Fonts;
 using Middleman.PdfFlex.Drawing;
 using Middleman.PdfFlex.Pdf;
 using Middleman.PdfFlex.Pdf.Advanced;
+using Middleman.PdfFlex.Pdf.Annotations;
+using Middleman.PdfFlex.Pdf.Structure;
 using Middleman.PdfFlex.UniversalAccessibility;
 
 namespace Middleman.PdfFlex.Rendering;
@@ -127,6 +130,14 @@ public static class DocumentRenderer
         // Layout uses the default header height; PaginateGroup applies per-page offsets.
         double bodyMarginTop = document.Margins.Top + headerHeight;
 
+        // Auto-assign Ids to headings before pagination so that the anchor registry
+        // can track their positions. This must happen before PaginateGroup runs.
+        AutoAssignHeadingIds(document.Children);
+
+        // Create anchor registry to track element positions during pagination.
+        // This allows {page:id} tokens to be resolved during Phase 2 rendering.
+        var anchorRegistry = new AnchorRegistry();
+
         int absolutePageIdx = 0;
 
         foreach (var group in pageGroups)
@@ -150,7 +161,8 @@ public static class DocumentRenderer
             // Paginate the root Column's children across multiple pages.
             var groupPages = PaginateGroup(document, rootNode, contentWidth, defaultContentHeight,
                 headerHeight, footerHeight,
-                firstPageContentHeight, firstPageHeaderHeight, absolutePageIdx);
+                firstPageContentHeight, firstPageHeaderHeight, absolutePageIdx,
+                anchorRegistry);
             allPages.AddRange(groupPages);
             absolutePageIdx += groupPages.Count;
         }
@@ -164,11 +176,14 @@ public static class DocumentRenderer
         int totalPages = allPages.Count;
         var sb = pdfDoc._uaManager?.StructureBuilder;
         bool hasUaManager = pdfDoc._uaManager != null;
+        var pendingLinks = new List<PendingLink>();
+        var pdfPages = new List<PdfPage>();
 
         for (int pageIdx = 0; pageIdx < allPages.Count; pageIdx++)
         {
             var pdfPage = pdfDoc.AddPage();
             SetPageSize(pdfPage, pageWidth, pageHeight);
+            pdfPages.Add(pdfPage);
             int pageNum = pageIdx + 1;
 
             // Determine the actual footer height for this page.
@@ -178,7 +193,8 @@ public static class DocumentRenderer
             // for the same page (only one XGraphics per page at a time).
             using (var gfx = XGraphics.FromPdfPage(pdfPage))
             {
-                var ctx = new RenderContext(gfx, pageNum, totalPages, pdfDoc.Conformance, sb);
+                var ctx = new RenderContext(gfx, pageNum, totalPages, pdfDoc.Conformance, sb,
+                    anchorRegistry, pdfPage, pendingLinks, pageHeight);
 
                 foreach (var action in allPages[pageIdx])
                 {
@@ -197,6 +213,13 @@ public static class DocumentRenderer
             if (hasUaManager)
                 RenderWatermarkIfPresent(pdfDoc, document, pdfPage);
         }
+
+        // Phase 3: Resolve pending internal links now that all anchors are known.
+        ResolvePendingLinks(pendingLinks, anchorRegistry, pdfPages, pageHeight);
+
+        // Phase 4: Auto-generate outlines from headings.
+        if (document.AutoGenerateOutlines)
+            GenerateOutlines(pdfDoc, document, anchorRegistry, pdfPages);
 
         // For non-PDF/UA documents, render watermarks in a final pass.
         if (!hasUaManager)
@@ -328,27 +351,48 @@ public static class DocumentRenderer
             return;
         }
 
-        // Counting pass: determine total pages if {pages} token is used.
-        // Check both body content and header/footer elements for the token.
+        // Auto-assign Ids to headings before counting/rendering.
+        AutoAssignHeadingIds(document.Children);
+
+        // Counting pass: determine total pages if {pages} or {page:id} tokens are used.
+        // Also populate anchor registry during the counting pass.
         bool needsTotalPages = HasTotalPagesToken(document.Children)
             || HasTotalPagesTokenInElement(document.Header)
             || HasTotalPagesTokenInElement(document.Footer)
             || HasTotalPagesTokenInElement(document.FirstPageHeader)
             || HasTotalPagesTokenInElement(document.FirstPageFooter);
-        int totalPages = needsTotalPages
-            ? CountPages(document, contentWidth, defaultContentHeight, headerHeight,
-                firstPageContentHeight, firstPageHeaderHeight)
-            : 0;
+        bool needsAnchors = HasAnchorPageTokens(document.Children)
+            || HasAnchorPageTokens(new[] { document.Header, document.Footer,
+                document.FirstPageHeader, document.FirstPageFooter }
+                .Where(e => e != null)!);
+
+        // The counting pass also populates the anchor registry for {page:id} tokens
+        // and outline generation. Always run it when outlines are enabled or anchors
+        // are needed.
+        bool needsCountingPass = needsTotalPages || needsAnchors || document.AutoGenerateOutlines;
+        var anchorRegistry = new AnchorRegistry();
+        int totalPages;
+        if (needsCountingPass)
+        {
+            totalPages = CountPagesAndAnchors(document, contentWidth, defaultContentHeight,
+                headerHeight, firstPageContentHeight, firstPageHeaderHeight, anchorRegistry);
+        }
+        else
+        {
+            totalPages = 0;
+        }
 
         int currentPageNumber = 0;
         double bodyMarginTop = document.Margins.Top + headerHeight;
+        var pendingLinks = new List<PendingLink>();
+        var pdfPages = new List<PdfPage>();
 
         // Render pages one at a time instead of collecting closures for all pages.
         foreach (var group in pageGroups)
         {
             if (group.Count == 0)
             {
-                // Blank page from consecutive PageBreaks — render header/footer.
+                // Blank page from consecutive PageBreaks -- render header/footer.
                 currentPageNumber++;
                 var blankPage = pdfDoc.AddPage();
                 SetPageSize(blankPage, pageWidth, pageHeight);
@@ -384,9 +428,18 @@ public static class DocumentRenderer
             // Render pages for this group immediately, one at a time.
             RenderGroupStreaming(pdfDoc, document, rootNode, pageWidth, pageHeight,
                 contentWidth, defaultContentHeight, headerHeight, footerHeight,
-                ref currentPageNumber, needsTotalPages ? totalPages : 0,
-                firstPageContentHeight, firstPageHeaderHeight, firstPageFooterHeight);
+                ref currentPageNumber, totalPages,
+                firstPageContentHeight, firstPageHeaderHeight, firstPageFooterHeight,
+                anchorRegistry, pendingLinks, pdfPages);
         }
+
+        // Resolve pending internal links. In streaming mode, pages may have been
+        // released for content but annotations can still be added.
+        ResolvePendingLinks(pendingLinks, anchorRegistry, pdfPages, pageHeight);
+
+        // Auto-generate outlines from headings.
+        if (document.AutoGenerateOutlines)
+            GenerateOutlines(pdfDoc, document, anchorRegistry, pdfPages);
 
         // For non-PDF/UA documents, render watermarks in a final pass.
         // PDF/UA watermarks are rendered per-page inside FlushPage.
@@ -574,7 +627,8 @@ public static class DocumentRenderer
         double docFooterHeight = 0,
         double firstPageContentHeight = 0,
         double firstPageHeaderHeight = 0,
-        int startingPageIndex = 0)
+        int startingPageIndex = 0,
+        AnchorRegistry? anchorRegistry = null)
     {
         double marginLeft = document.Margins.Left;
 
@@ -645,6 +699,14 @@ public static class DocumentRenderer
             double sourceY = childNode.Y;
             double yOffset = targetY - sourceY;
             var capturedNode = childNode;
+
+            // Register anchor positions during pagination so {page:id} tokens
+            // can be resolved during the render pass.
+            if (anchorRegistry != null)
+            {
+                int pageNum = startingPageIndex + currentPageIndex + 1; // 1-based
+                RegisterAnchorsRecursive(childNode, anchorRegistry, pageNum, yOffset);
+            }
 
             pages[currentPageIndex].Add(ctx =>
             {
@@ -958,6 +1020,123 @@ public static class DocumentRenderer
     }
 
     /// <summary>
+    /// Counts the total number of pages and populates the anchor registry in one pass.
+    /// Combines the functionality of <see cref="CountPages"/> with anchor position tracking
+    /// for the streaming renderer.
+    /// </summary>
+    private static int CountPagesAndAnchors(
+        Document document,
+        double contentWidth,
+        double contentHeight,
+        double headerHeight,
+        double firstPageContentHeight,
+        double firstPageHeaderHeight,
+        AnchorRegistry anchorRegistry)
+    {
+        double bodyMarginTop = document.Margins.Top + headerHeight;
+
+        var pageGroups = SplitByPageBreaks(document.Children);
+        if (pageGroups.Count == 0)
+            return 1;
+
+        int absolutePageIdx = 0;
+
+        foreach (var group in pageGroups)
+        {
+            if (group.Count == 0)
+            {
+                absolutePageIdx++;
+                continue;
+            }
+
+            var wrapper = new Column(group);
+            var rootNode = LayoutEngine.Calculate(
+                wrapper, contentWidth, 1e6,
+                document.Margins.Left, bodyMarginTop);
+
+            absolutePageIdx += CountPagesInGroupWithAnchors(bodyMarginTop, rootNode, contentHeight,
+                firstPageContentHeight, firstPageHeaderHeight,
+                document.Margins.Top, absolutePageIdx, anchorRegistry);
+        }
+
+        return Math.Max(absolutePageIdx, 1);
+    }
+
+    /// <summary>
+    /// Counts pages in a group while also tracking anchor positions.
+    /// Mirrors <see cref="CountPagesInGroup"/> with added anchor registration.
+    /// </summary>
+    private static int CountPagesInGroupWithAnchors(
+        double defaultMarginTop,
+        LayoutNode rootNode,
+        double contentHeight,
+        double firstPageContentHeight,
+        double firstPageHeaderHeight,
+        double rawMarginTop,
+        int startingPageIndex,
+        AnchorRegistry anchorRegistry)
+    {
+        double marginTop;
+        double pageBottom;
+        if (startingPageIndex == 0 && firstPageContentHeight > 0)
+        {
+            marginTop = rawMarginTop + firstPageHeaderHeight;
+            pageBottom = marginTop + firstPageContentHeight;
+        }
+        else
+        {
+            marginTop = defaultMarginTop;
+            pageBottom = defaultMarginTop + contentHeight;
+        }
+
+        double defaultPageBottom = defaultMarginTop + contentHeight;
+
+        int pageCount = 1;
+        double cursorY = marginTop;
+
+        for (int i = 0; i < rootNode.Children.Count; i++)
+        {
+            var childNode = rootNode.Children[i];
+            var childElement = childNode.Source;
+            double childHeight = childNode.Height;
+
+            if (childElement is Table table)
+            {
+                CountTablePages(table, ref cursorY, pageBottom, marginTop, ref pageCount,
+                    defaultPageBottom, defaultMarginTop);
+                if (startingPageIndex + pageCount - 1 > 0)
+                {
+                    marginTop = defaultMarginTop;
+                    pageBottom = defaultPageBottom;
+                }
+                continue;
+            }
+
+            if (cursorY + childHeight > pageBottom + 0.5 && cursorY > marginTop + 0.5)
+            {
+                pageCount++;
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
+                cursorY = marginTop;
+            }
+
+            // Register anchors at their pagination positions.
+            double yOffset = cursorY - childNode.Y;
+            int pageNum = startingPageIndex + pageCount;
+            RegisterAnchorsRecursive(childNode, anchorRegistry, pageNum, yOffset);
+
+            cursorY += childHeight;
+
+            if (i < rootNode.Children.Count - 1 && rootNode.Source is Column col)
+            {
+                cursorY += col.Gap;
+            }
+        }
+
+        return pageCount;
+    }
+
+    /// <summary>
     /// Counts the number of pages a single layout group would produce.
     /// Mirrors the pagination logic of <see cref="PaginateGroup"/> without rendering.
     /// </summary>
@@ -1169,7 +1348,10 @@ public static class DocumentRenderer
         int totalPages,
         double firstPageContentHeight = 0,
         double firstPageHeaderHeight = 0,
-        double firstPageFooterHeight = 0)
+        double firstPageFooterHeight = 0,
+        AnchorRegistry? anchorRegistry = null,
+        List<PendingLink>? pendingLinks = null,
+        List<PdfPage>? pdfPages = null)
     {
         // Default margins for pages 2+.
         double defaultMarginTop = document.Margins.Top + docHeaderHeight;
@@ -1201,13 +1383,15 @@ public static class DocumentRenderer
             pageNumber++;
             var pdfPage = pdfDoc.AddPage();
             SetPageSize(pdfPage, pageWidth, pageHeight);
+            pdfPages?.Add(pdfPage);
 
             // Determine the actual footer height for this page.
             double actualFooterHeight = (pageNumber == 1) ? firstPageFooterHeight : docFooterHeight;
 
             using (var gfx = XGraphics.FromPdfPage(pdfPage))
             {
-                var ctx = new RenderContext(gfx, pageNumber, totalPages, pdfDoc.Conformance, sb);
+                var ctx = new RenderContext(gfx, pageNumber, totalPages, pdfDoc.Conformance, sb,
+                    anchorRegistry, pdfPage, pendingLinks, pageHeight);
 
                 foreach (var action in currentPageActions)
                     action(ctx);
@@ -1622,7 +1806,15 @@ public static class DocumentRenderer
 
         var sb = ctx.StructureBuilder;
         if (sb != null) sb.BeginArtifact();
-        RenderNode(ctx, node);
+
+        // Render inner content without structure tags. Content inside a PDF artifact
+        // must not contain marked content sequences (PDF/UA-1 clause 7.1, test 2).
+        var artifactCtx = sb != null
+            ? new RenderContext(ctx.Graphics, ctx.CurrentPage, ctx.TotalPages, ctx.Conformance,
+                structureBuilder: null, ctx.AnchorRegistry, ctx.Page, ctx.PendingLinks, ctx.PageHeight)
+            : ctx;
+        RenderNode(artifactCtx, node);
+
         if (sb != null) sb.End();
     }
 
@@ -1654,6 +1846,348 @@ public static class DocumentRenderer
         if (pageNumber == 1 && document.FirstPageFooter != null)
             return document.FirstPageFooter;
         return document.Footer;
+    }
+
+    /// <summary>
+    /// Auto-assigns Ids to heading elements that do not already have one.
+    /// Must be called before pagination so that the anchor registry can track headings.
+    /// </summary>
+    private static void AutoAssignHeadingIds(IEnumerable<Element> elements)
+    {
+        var existingSlugs = new HashSet<string>(StringComparer.Ordinal);
+        CollectExistingIdsRecursive(elements, existingSlugs);
+        AssignHeadingIdsRecursive(elements, existingSlugs);
+    }
+
+    /// <summary>
+    /// Recursively assigns Ids to heading TextBlocks that lack one.
+    /// </summary>
+    private static void AssignHeadingIdsRecursive(
+        IEnumerable<Element> elements, HashSet<string> existingSlugs)
+    {
+        foreach (var element in elements)
+        {
+            if (element is TextBlock tb && tb.HeadingLevel.HasValue && string.IsNullOrEmpty(tb.Id))
+            {
+                tb.Id = HeadingSlugGenerator.Generate(tb.Text, existingSlugs);
+            }
+
+            if (element is Container container)
+                AssignHeadingIdsRecursive(container.Children, existingSlugs);
+        }
+    }
+
+    /// <summary>
+    /// Recursively registers anchor positions for all elements with non-null Ids
+    /// within a layout node tree. Called during pagination to track which page
+    /// each element lands on.
+    /// </summary>
+    /// <param name="node">The layout node to inspect.</param>
+    /// <param name="registry">The anchor registry to populate.</param>
+    /// <param name="pageNumber">The 1-based page number.</param>
+    /// <param name="yOffset">The Y offset applied by pagination (targetY - sourceY).</param>
+    private static void RegisterAnchorsRecursive(
+        LayoutNode node, AnchorRegistry registry, int pageNumber, double yOffset)
+    {
+        var element = node.Source;
+        if (!string.IsNullOrEmpty(element?.Id))
+        {
+            registry.Register(element.Id, pageNumber, node.Y + yOffset);
+        }
+
+        foreach (var child in node.Children)
+        {
+            RegisterAnchorsRecursive(child, registry, pageNumber, yOffset);
+        }
+    }
+
+    /// <summary>
+    /// Resolves all pending internal link annotations after all pages have been rendered
+    /// and anchor positions are known. Creates GoTo annotations pointing to the target
+    /// page and Y position.
+    /// </summary>
+    /// <param name="pendingLinks">The collection of deferred internal links.</param>
+    /// <param name="registry">The anchor registry with resolved positions.</param>
+    /// <param name="pdfPages">The list of PDF pages (0-indexed).</param>
+    /// <param name="pageHeight">The page height in points for coordinate conversion.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when a link target Id is not found in the anchor registry.
+    /// </exception>
+    private static void ResolvePendingLinks(
+        List<PendingLink> pendingLinks,
+        AnchorRegistry registry,
+        List<PdfPage> pdfPages,
+        double pageHeight)
+    {
+        foreach (var link in pendingLinks)
+        {
+            if (!registry.TryGetPage(link.TargetId, out int targetPage))
+            {
+                throw new InvalidOperationException(
+                    $"Link target '{link.TargetId}' not found. Ensure an element with " +
+                    $"Id = \"{link.TargetId}\" exists in the document.");
+            }
+
+            registry.TryGetY(link.TargetId, out double targetY);
+
+            // Convert XGraphics coordinates (top-left origin) to PDF coordinates (bottom-left origin).
+            double pdfTargetY = pageHeight - targetY;
+            double pdfRectY1 = pageHeight - (link.Rect.Y + link.Rect.Height);
+            double pdfRectY2 = pageHeight - link.Rect.Y;
+            var pdfRect = new PdfRectangle(link.Rect.X, pdfRectY1, link.Rect.X + link.Rect.Width, pdfRectY2);
+            var destPoint = new XPoint(0, pdfTargetY);
+
+            var annotation = PdfLinkAnnotation.CreateDocumentLink(pdfRect, targetPage, destPoint);
+
+            if (link.StructureBuilder != null && link.LinkStructureElement != null)
+            {
+                // PDF/UA: associate the annotation with the /Link structure element
+                // that was created during rendering (when the element stack was correctly
+                // positioned). Sets /Contents for accessibility, and /Tabs /S on the page.
+                link.StructureBuilder.AssociateLinkAnnotation(
+                    annotation, link.Page, link.AltText ?? link.TargetId,
+                    link.LinkStructureElement);
+            }
+            else
+            {
+                link.Page.Annotations.Add(annotation);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Creates a URI link annotation on the specified page for an external URL.
+    /// </summary>
+    /// <param name="page">The PDF page to add the annotation to.</param>
+    /// <param name="rect">The link rectangle in XGraphics coordinates.</param>
+    /// <param name="url">The target URL.</param>
+    /// <param name="pageHeight">The page height for coordinate conversion.</param>
+    /// <param name="sb">The optional structure builder for PDF/UA tagging.</param>
+    /// <param name="altText">The alternative text for accessibility.</param>
+    internal static void CreateUriLinkAnnotation(
+        PdfPage page, XRect rect, string url, double pageHeight,
+        StructureBuilder? sb, string? altText)
+    {
+        double pdfRectY1 = pageHeight - (rect.Y + rect.Height);
+        double pdfRectY2 = pageHeight - rect.Y;
+        var pdfRect = new PdfRectangle(rect.X, pdfRectY1, rect.X + rect.Width, pdfRectY2);
+
+        var annotation = PdfLinkAnnotation.CreateWebLink(pdfRect, url);
+
+        if (sb != null)
+        {
+            // StructureBuilder.BeginElement(PdfLinkAnnotation, altText) internally
+            // adds the annotation to the page. Do not add it again.
+            sb.BeginElement(annotation, altText ?? url);
+            sb.End();
+        }
+        else
+        {
+            page.Annotations.Add(annotation);
+        }
+    }
+
+    /// <summary>
+    /// Queues an internal link for deferred resolution after all pages are rendered.
+    /// When a structure builder is active (PDF/UA mode), callers should create the
+    /// /Link structure element during rendering via
+    /// <see cref="StructureBuilder.CreateLinkStructureElement"/> and pass it as
+    /// <paramref name="linkStructureElement"/> so the element is parented correctly
+    /// in the structure tree.
+    /// </summary>
+    /// <param name="ctx">The render context for the current page.</param>
+    /// <param name="rect">The link rectangle in XGraphics coordinates.</param>
+    /// <param name="targetId">The target element Id.</param>
+    /// <param name="altText">The alternative text for accessibility.</param>
+    /// <param name="linkStructureElement">
+    /// The pre-created /Link structure element, or null when PDF/UA is not active.
+    /// </param>
+    internal static void QueueInternalLink(
+        RenderContext ctx, XRect rect, string targetId, string? altText,
+        PdfStructureElement? linkStructureElement = null)
+    {
+        ctx.PendingLinks?.Add(new PendingLink
+        {
+            Page = ctx.Page!,
+            Rect = rect,
+            TargetId = targetId,
+            AltText = altText,
+            SourcePageNumber = ctx.CurrentPage,
+            StructureBuilder = ctx.StructureBuilder,
+            LinkStructureElement = linkStructureElement
+        });
+    }
+
+    /// <summary>
+    /// Determines whether a link target string represents an external URI.
+    /// </summary>
+    /// <param name="linkTarget">The link target string.</param>
+    /// <returns><c>true</c> if the target starts with http:// or https://.</returns>
+    internal static bool IsExternalLink(string linkTarget)
+    {
+        return linkTarget.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || linkTarget.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Auto-generates PDF outlines (bookmarks) from heading elements in the document.
+    /// Walks the element tree to find all <see cref="TextBlock"/> elements with
+    /// <see cref="TextBlock.HeadingLevel"/>, then creates a nested outline tree
+    /// where H1 entries are top-level and H2-H6 nest under their nearest ancestor heading.
+    /// </summary>
+    /// <param name="pdfDoc">The PDF document to add outlines to.</param>
+    /// <param name="document">The PdfFlex document containing the element tree.</param>
+    /// <param name="registry">The anchor registry with heading positions.</param>
+    /// <param name="pdfPages">The list of PDF pages (0-indexed).</param>
+    private static void GenerateOutlines(
+        PdfDocument pdfDoc,
+        Document document,
+        AnchorRegistry registry,
+        List<PdfPage> pdfPages)
+    {
+        var headings = new List<(string Text, int Level, string Id)>();
+        var existingSlugs = new HashSet<string>(StringComparer.Ordinal);
+
+        // Collect existing Ids to avoid slug collisions.
+        CollectExistingIdsRecursive(document.Children, existingSlugs);
+
+        // Collect all headings from the element tree.
+        CollectHeadings(document.Children, headings, existingSlugs);
+
+        if (headings.Count == 0)
+            return;
+
+        // Build nested outline structure.
+        // Stack tracks the current outline node at each nesting level.
+        var outlineStack = new Stack<(PdfOutline Outline, int Level)>();
+
+        foreach (var (text, level, id) in headings)
+        {
+            if (!registry.TryGetPage(id, out int pageNum))
+                continue;
+
+            if (pageNum < 1 || pageNum > pdfPages.Count)
+                continue;
+
+            var destPage = pdfPages[pageNum - 1];
+
+            var outline = new PdfOutline(text, destPage, true);
+
+            // Set the top position so the viewer scrolls to the heading.
+            if (registry.TryGetY(id, out double y))
+            {
+                outline.PageDestinationType = PdfPageDestinationType.Xyz;
+                outline.Left = null;
+                outline.Top = destPage.Height.Point - y;
+                outline.Zoom = null;
+            }
+
+            // Pop stack entries at same or deeper level to find the parent.
+            while (outlineStack.Count > 0 && outlineStack.Peek().Level >= level)
+                outlineStack.Pop();
+
+            if (outlineStack.Count == 0)
+            {
+                // Top-level outline entry.
+                pdfDoc.Outlines.Add(outline);
+            }
+            else
+            {
+                // Nest under the most recent shallower heading.
+                outlineStack.Peek().Outline.Outlines.Add(outline);
+            }
+
+            outlineStack.Push((outline, level));
+        }
+    }
+
+    /// <summary>
+    /// Recursively collects all headings from the element tree for outline generation.
+    /// Auto-assigns Ids to headings that lack one.
+    /// </summary>
+    private static void CollectHeadings(
+        IEnumerable<Element> elements,
+        List<(string Text, int Level, string Id)> headings,
+        HashSet<string> existingSlugs)
+    {
+        foreach (var element in elements)
+        {
+            if (element is TextBlock tb && tb.HeadingLevel.HasValue)
+            {
+                if (string.IsNullOrEmpty(tb.Id))
+                    tb.Id = HeadingSlugGenerator.Generate(tb.Text, existingSlugs);
+
+                headings.Add((tb.Text, tb.HeadingLevel.Value, tb.Id));
+            }
+
+            if (element is Container container)
+                CollectHeadings(container.Children, headings, existingSlugs);
+        }
+    }
+
+    /// <summary>
+    /// Recursively collects all non-null element Ids from the tree into the slug set.
+    /// </summary>
+    private static void CollectExistingIdsRecursive(IEnumerable<Element> elements, HashSet<string> slugs)
+    {
+        foreach (var element in elements)
+        {
+            if (!string.IsNullOrEmpty(element.Id))
+                slugs.Add(element.Id);
+
+            if (element is Container container)
+                CollectExistingIdsRecursive(container.Children, slugs);
+        }
+    }
+
+    /// <summary>
+    /// Recursively checks whether any <see cref="TextBlock"/> in the element tree contains
+    /// an anchor page token (<c>{page:</c>). Used to determine if a counting pass is needed
+    /// for the streaming renderer.
+    /// </summary>
+    /// <param name="elements">The elements to inspect.</param>
+    /// <returns><c>true</c> if any text block contains an anchor page token.</returns>
+    internal static bool HasAnchorPageTokens(IEnumerable<Element> elements)
+    {
+        foreach (var element in elements)
+        {
+            if (element is TextBlock tb &&
+                !string.IsNullOrEmpty(tb.Text) &&
+                tb.Text.Contains("{page:", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (element is Container container && HasAnchorPageTokens(container.Children))
+                return true;
+
+            if (element is Table table)
+            {
+                foreach (var col in table.Columns)
+                {
+                    if (col.Header.Contains("{page:", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+                foreach (var row in table.Rows)
+                {
+                    foreach (var cell in row)
+                    {
+                        if (cell is string s && s.Contains("{page:", StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                }
+                if (table.FooterRow != null)
+                {
+                    foreach (var cell in table.FooterRow)
+                    {
+                        if (cell is string s && s.Contains("{page:", StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     #endregion Private Methods

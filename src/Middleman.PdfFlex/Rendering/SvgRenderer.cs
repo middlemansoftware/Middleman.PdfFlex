@@ -3,6 +3,7 @@
 
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Layout;
+using Middleman.PdfFlex.Pdf.Structure;
 using Middleman.Svg.Model;
 using Middleman.PdfFlex.Drawing;
 using Middleman.PdfFlex.UniversalAccessibility;
@@ -70,6 +71,28 @@ internal static class SvgRenderer
         gfx.Restore(state);
 
         if (sb != null) sb.End();
+
+        // Create link annotation covering the drawn SVG area.
+        string? linkTarget = svgBox.LinkTarget;
+        if (!string.IsNullOrEmpty(linkTarget) && ctx.Page != null)
+        {
+            var linkRect = new XRect(offsetX, offsetY, scaledWidth, scaledHeight);
+            if (DocumentRenderer.IsExternalLink(linkTarget))
+            {
+                DocumentRenderer.CreateUriLinkAnnotation(
+                    ctx.Page, linkRect, linkTarget, ctx.PageHeight, sb,
+                    svgBox.AltText ?? linkTarget);
+            }
+            else
+            {
+                // Create the /Link structure element now while the element
+                // stack is correctly positioned. The annotation will be
+                // associated with this element during deferred resolution.
+                PdfStructureElement? linkSte = ctx.StructureBuilder?.CreateLinkStructureElement();
+                DocumentRenderer.QueueInternalLink(
+                    ctx, linkRect, linkTarget, svgBox.AltText, linkSte);
+            }
+        }
     }
 
     #endregion Public Methods

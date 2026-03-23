@@ -32,4 +32,10 @@ public class SpanStyle
 
     /// <summary>Gets or sets the line height multiplier. Null inherits from the parent.</summary>
     public double? LineHeight { get; set; }
+
+    /// <summary>
+    /// Gets or sets the link target for this span. URLs starting with http:// or https://
+    /// create URI links. Other values create internal GoTo links. Null means no link.
+    /// </summary>
+    public string? LinkTarget { get; set; }
 }

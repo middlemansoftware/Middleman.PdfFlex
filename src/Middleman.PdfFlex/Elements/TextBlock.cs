@@ -33,6 +33,12 @@ public class TextBlock : Element
     /// </summary>
     public int? HeadingLevel { get; }
 
+    /// <summary>
+    /// Gets or sets the link target. URLs starting with http:// or https:// create URI links.
+    /// Other values create internal GoTo links to the element with a matching Id.
+    /// </summary>
+    public string? LinkTarget { get; set; }
+
     #endregion Public Properties
 
     #region Constructors

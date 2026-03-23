@@ -3,19 +3,14 @@ THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
 This project incorporates components from the projects listed below.
 
 ────────────────────────────────────────
-PdfSharp 6.2.4
+PDFsharp 6.2.x
 License: MIT
+Copyright: empira Software GmbH
 Source: https://github.com/empira/PDFsharp
 ────────────────────────────────────────
 
-Middleman.PdfFlex includes a modified fork of PDFsharp 6.2.x (MIT License,
-copyright empira Software GmbH). The fork covers the PDF object model,
-drawing primitives (XGraphics, XFont, XImage), PDF reader/writer, security,
-digital signatures, and universal accessibility modules. MigraDoc and
-platform-specific builds (GDI+/WPF) are not included. Modifications include
-a PDF conformance system (PDF/A, PDF/UA, PDF Declarations), watermark
-rendering fixes, streaming output support, and namespace consolidation
-under Middleman.PdfFlex.
+PdfFlex's low-level PDF object model and drawing primitives
+originated from PDFsharp, an open-source PDF library for .NET.
 
 ────────────────────────────────────────
 StbImageSharp 2.30.15

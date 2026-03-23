@@ -78,6 +78,13 @@ public class Document
     /// </summary>
     public Element? FirstPageFooter { get; set; }
 
+    /// <summary>
+    /// Gets or sets whether to auto-generate PDF outlines (bookmarks) from heading elements.
+    /// When true, all <see cref="TextBlock"/> elements with a <see cref="TextBlock.HeadingLevel"/>
+    /// are added to the PDF outline tree with proper nesting. Defaults to true.
+    /// </summary>
+    public bool AutoGenerateOutlines { get; set; } = true;
+
     #endregion Public Properties
 
     #region Constructors

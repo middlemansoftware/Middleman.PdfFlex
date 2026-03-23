@@ -3,6 +3,7 @@
 
 using Middleman.PdfFlex.Elements;
 using Middleman.PdfFlex.Layout;
+using Middleman.PdfFlex.Pdf.Structure;
 using Middleman.PdfFlex.Styling;
 using Middleman.PdfFlex.Drawing;
 using Middleman.PdfFlex.UniversalAccessibility;
@@ -11,7 +12,8 @@ namespace Middleman.PdfFlex.Rendering;
 
 /// <summary>
 /// Renders <see cref="TextBlock"/> and <see cref="RichText"/> elements.
-/// Handles text alignment, explicit newlines, and per-span styling for rich text.
+/// Handles text alignment, explicit newlines, per-span styling for rich text,
+/// link annotations, and anchor page token resolution.
 /// </summary>
 internal static class TextRenderer
 {
@@ -20,8 +22,8 @@ internal static class TextRenderer
     /// <summary>
     /// Renders a <see cref="TextBlock"/> element within the bounds of the specified layout node.
     /// Uses word wrapping to break text into lines that fit within the node's width,
-    /// matching the layout engine's text measurement. Resolves <c>{page}</c> and <c>{pages}</c>
-    /// tokens before rendering.
+    /// matching the layout engine's text measurement. Resolves <c>{page}</c>, <c>{pages}</c>,
+    /// and <c>{page:id}</c> tokens before rendering.
     /// </summary>
     /// <param name="ctx">The render context carrying the graphics surface and page state.</param>
     /// <param name="node">The layout node positioning the text.</param>
@@ -32,7 +34,7 @@ internal static class TextRenderer
             return;
 
         // Resolve page tokens before rendering.
-        string resolvedText = ResolveTokens(textBlock.Text, ctx.CurrentPage, ctx.TotalPages);
+        string resolvedText = ResolveTokens(textBlock.Text, ctx.CurrentPage, ctx.TotalPages, ctx.AnchorRegistry);
 
         var gfx = ctx.Graphics;
         var sb = ctx.StructureBuilder;
@@ -43,6 +45,8 @@ internal static class TextRenderer
         var format = CreateStringFormat(textAlign);
 
         double lineHeight = font.GetHeight();
+        string? linkTarget = textBlock.LinkTarget;
+        bool hasLink = !string.IsNullOrEmpty(linkTarget);
 
         // Open structure element: P (paragraph) or H1-H6 based on heading level.
         if (sb != null)
@@ -73,6 +77,27 @@ internal static class TextRenderer
             var lineRect = new XRect(node.X, cursorY, node.Width, lineHeight);
             gfx.DrawString(wrapResult.Lines[i], font, brush, lineRect, format);
             cursorY += lineHeight;
+        }
+
+        // Create link annotation covering the entire text block area.
+        if (hasLink && ctx.Page != null)
+        {
+            var linkRect = new XRect(node.X, node.Y, node.Width,
+                Math.Min(cursorY - node.Y, node.Height));
+
+            if (DocumentRenderer.IsExternalLink(linkTarget!))
+            {
+                DocumentRenderer.CreateUriLinkAnnotation(
+                    ctx.Page, linkRect, linkTarget!, ctx.PageHeight, sb, resolvedText);
+            }
+            else
+            {
+                // Create the /Link structure element now while the element stack
+                // is correctly positioned (inside the P/H block). The annotation
+                // will be associated with this element during deferred resolution.
+                PdfStructureElement? linkSte = sb?.CreateLinkStructureElement();
+                DocumentRenderer.QueueInternalLink(ctx, linkRect, linkTarget!, resolvedText, linkSte);
+            }
         }
 
         if (sb != null) sb.End();
@@ -131,6 +156,9 @@ internal static class TextRenderer
                 var segSize = TextMeasurer.MeasureString(segment.Text, spanFont);
                 var segRect = new XRect(cursorX, cursorY, segSize.Width, maxLineHeight);
 
+                // Check for span-level link target.
+                string? spanLinkTarget = segment.Span.Style?.LinkTarget;
+
                 if (sb != null) sb.BeginElement(PdfInlineLevelElementTag.Span);
                 gfx.DrawString(segment.Text, spanFont, spanBrush, segRect, XStringFormats.TopLeft);
 
@@ -138,6 +166,23 @@ internal static class TextRenderer
                 RenderDecorations(gfx, segment.Span.Style, spanFont, spanBrush,
                     cursorX, cursorY, segSize.Width, maxLineHeight);
                 if (sb != null) sb.End(); // Span
+
+                // Create link annotation for this span segment.
+                if (!string.IsNullOrEmpty(spanLinkTarget) && ctx.Page != null)
+                {
+                    if (DocumentRenderer.IsExternalLink(spanLinkTarget))
+                    {
+                        DocumentRenderer.CreateUriLinkAnnotation(
+                            ctx.Page, segRect, spanLinkTarget, ctx.PageHeight, sb, segment.Text);
+                    }
+                    else
+                    {
+                        // Create the /Link structure element now while the element
+                        // stack is correctly positioned (inside the P block).
+                        PdfStructureElement? linkSte = sb?.CreateLinkStructureElement();
+                        DocumentRenderer.QueueInternalLink(ctx, segRect, spanLinkTarget, segment.Text, linkSte);
+                    }
+                }
 
                 cursorX += segSize.Width;
 
@@ -156,26 +201,79 @@ internal static class TextRenderer
 
     #endregion Public Methods
 
-    #region Private Methods
+    #region Internal Methods
 
     /// <summary>
     /// Replaces page number tokens in text with actual values.
-    /// Supported tokens: <c>{page}</c> (current page number), <c>{pages}</c> (total page count).
+    /// Supported tokens: <c>{page}</c> (current page number), <c>{pages}</c> (total page count),
+    /// <c>{page:id}</c> (page number of the element with the specified Id).
     /// Token matching is case-insensitive.
     /// </summary>
     /// <param name="text">The text potentially containing tokens.</param>
     /// <param name="currentPage">The 1-based current page number.</param>
     /// <param name="totalPages">The total number of pages in the document.</param>
+    /// <param name="anchorRegistry">The optional anchor registry for resolving {page:id} tokens.</param>
     /// <returns>The text with all tokens replaced by their numeric values.</returns>
-    private static string ResolveTokens(string text, int currentPage, int totalPages)
+    internal static string ResolveTokens(string text, int currentPage, int totalPages,
+        AnchorRegistry? anchorRegistry = null)
     {
         if (text.IndexOf('{') < 0)
             return text;
 
         // Replace {pages} before {page} to avoid partial match ({page} is a substring of {pages}).
-        return text
+        text = text
             .Replace("{pages}", totalPages.ToString(), StringComparison.OrdinalIgnoreCase)
             .Replace("{page}", currentPage.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        // Resolve {page:id} tokens if anchor registry is available.
+        if (anchorRegistry != null)
+        {
+            text = ResolveAnchorPageTokens(text, anchorRegistry);
+        }
+
+        return text;
+    }
+
+    #endregion Internal Methods
+
+    #region Private Methods
+
+    /// <summary>
+    /// Resolves <c>{page:id}</c> tokens by looking up the anchor page number
+    /// in the registry. Unresolved tokens are replaced with "?".
+    /// </summary>
+    private static string ResolveAnchorPageTokens(string text, AnchorRegistry registry)
+    {
+        int startIdx = 0;
+        while (startIdx < text.Length)
+        {
+            // Find the next {page: token (case-insensitive).
+            int tokenStart = text.IndexOf("{page:", startIdx, StringComparison.OrdinalIgnoreCase);
+            if (tokenStart < 0)
+                break;
+
+            int idStart = tokenStart + 6; // Length of "{page:"
+            int tokenEnd = text.IndexOf('}', idStart);
+            if (tokenEnd < 0)
+                break;
+
+            string anchorId = text.Substring(idStart, tokenEnd - idStart);
+            string replacement;
+
+            if (registry.TryGetPage(anchorId, out int page))
+            {
+                replacement = page.ToString();
+            }
+            else
+            {
+                replacement = "?";
+            }
+
+            text = string.Concat(text.AsSpan(0, tokenStart), replacement, text.AsSpan(tokenEnd + 1));
+            startIdx = tokenStart + replacement.Length;
+        }
+
+        return text;
     }
 
     /// <summary>
