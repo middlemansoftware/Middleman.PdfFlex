@@ -51,6 +51,7 @@ public static class DocumentRenderer
         ArgumentNullException.ThrowIfNull(stream);
 
         ValidateAccessibility(document);
+        ValidateHeaderFooter(document);
 
         FontRegistry.EnsureInitialized();
 
@@ -74,14 +75,46 @@ public static class DocumentRenderer
             return;
         }
 
+        // Measure the default header/footer heights (used for pages 2+).
+        // Headers/footers render at full page width, so measure with pageWidth at x=0.
+        double headerHeight = MeasureElementHeight(document.Header, pageWidth, 0, 0);
+        double footerHeight = MeasureElementHeight(document.Footer, pageWidth, 0, 0);
+        double defaultContentHeight = contentHeight - (headerHeight + footerHeight);
+
+        // Measure first-page header/footer heights (used for page 1).
+        double firstPageHeaderHeight = MeasureElementHeight(
+            GetHeaderForPage(document, 1), pageWidth, 0, 0);
+        double firstPageFooterHeight = MeasureElementHeight(
+            GetFooterForPage(document, 1), pageWidth, 0, 0);
+        double firstPageContentHeight = contentHeight - (firstPageHeaderHeight + firstPageFooterHeight);
+
+        if (defaultContentHeight <= 0 || firstPageContentHeight <= 0)
+        {
+            // Header/footer consume all available space. Create a single blank page.
+            pdfDoc.AddPage();
+            pdfDoc.Save(stream);
+            return;
+        }
+
         // Split the document children into page groups at PageBreak elements.
         var pageGroups = SplitByPageBreaks(document.Children);
 
         if (pageGroups.Count == 0)
         {
-            // No content. Create a single blank page.
+            // No content. Create a single blank page with header/footer.
             var blankPage = pdfDoc.AddPage();
             SetPageSize(blankPage, pageWidth, pageHeight);
+
+            using (var gfx = XGraphics.FromPdfPage(blankPage))
+            {
+                var sb0 = pdfDoc._uaManager?.StructureBuilder;
+                var ctx = new RenderContext(gfx, 1, 1, pdfDoc.Conformance, sb0);
+                RenderHeaderFooter(GetHeaderForPage(document, 1), ctx,
+                    0, 0, pageWidth);
+                RenderHeaderFooter(GetFooterForPage(document, 1), ctx,
+                    0, pageHeight - firstPageFooterHeight, pageWidth);
+            }
+
             RenderWatermarkIfPresent(pdfDoc, document, blankPage);
             pdfDoc.Save(stream);
             return;
@@ -90,12 +123,19 @@ public static class DocumentRenderer
         // Phase 1: Collect all page render actions across all groups.
         var allPages = new List<List<Action<RenderContext>>>();
 
+        // The body content top is shifted down by the margin and header height.
+        // Layout uses the default header height; PaginateGroup applies per-page offsets.
+        double bodyMarginTop = document.Margins.Top + headerHeight;
+
+        int absolutePageIdx = 0;
+
         foreach (var group in pageGroups)
         {
             if (group.Count == 0)
             {
                 // Empty group from consecutive PageBreaks: produce a blank page.
                 allPages.Add(new List<Action<RenderContext>>());
+                absolutePageIdx++;
                 continue;
             }
 
@@ -105,11 +145,14 @@ public static class DocumentRenderer
             var wrapper = new Column(group);
             var rootNode = LayoutEngine.Calculate(
                 wrapper, contentWidth, 1e6,
-                document.Margins.Left, document.Margins.Top);
+                document.Margins.Left, bodyMarginTop);
 
             // Paginate the root Column's children across multiple pages.
-            var groupPages = PaginateGroup(document, rootNode, contentWidth, contentHeight);
+            var groupPages = PaginateGroup(document, rootNode, contentWidth, defaultContentHeight,
+                headerHeight, footerHeight,
+                firstPageContentHeight, firstPageHeaderHeight, absolutePageIdx);
             allPages.AddRange(groupPages);
+            absolutePageIdx += groupPages.Count;
         }
 
         if (allPages.Count == 0)
@@ -126,17 +169,27 @@ public static class DocumentRenderer
         {
             var pdfPage = pdfDoc.AddPage();
             SetPageSize(pdfPage, pageWidth, pageHeight);
+            int pageNum = pageIdx + 1;
+
+            // Determine the actual footer height for this page.
+            double actualFooterHeight = (pageNum == 1) ? firstPageFooterHeight : footerHeight;
 
             // Content graphics must be disposed before creating watermark graphics
             // for the same page (only one XGraphics per page at a time).
             using (var gfx = XGraphics.FromPdfPage(pdfPage))
             {
-                var ctx = new RenderContext(gfx, pageIdx + 1, totalPages, pdfDoc.Conformance, sb);
+                var ctx = new RenderContext(gfx, pageNum, totalPages, pdfDoc.Conformance, sb);
 
                 foreach (var action in allPages[pageIdx])
                 {
                     action(ctx);
                 }
+
+                // Render header and footer at full page width, edge to edge.
+                RenderHeaderFooter(GetHeaderForPage(document, pageNum), ctx,
+                    0, 0, pageWidth);
+                RenderHeaderFooter(GetFooterForPage(document, pageNum), ctx,
+                    0, pageHeight - actualFooterHeight, pageWidth);
             }
 
             // When UAManager is active, render watermark per-page while we're still
@@ -204,6 +257,7 @@ public static class DocumentRenderer
         ArgumentNullException.ThrowIfNull(stream);
 
         ValidateAccessibility(document);
+        ValidateHeaderFooter(document);
 
         FontRegistry.EnsureInitialized();
 
@@ -227,36 +281,94 @@ public static class DocumentRenderer
             return;
         }
 
+        // Measure the default header/footer heights (used for pages 2+).
+        // Headers/footers render at full page width, so measure with pageWidth at x=0.
+        double headerHeight = MeasureElementHeight(document.Header, pageWidth, 0, 0);
+        double footerHeight = MeasureElementHeight(document.Footer, pageWidth, 0, 0);
+
+        // Body content area shrinks by the header/footer heights.
+        double defaultContentHeight = contentHeight - (headerHeight + footerHeight);
+
+        // Measure first-page header/footer heights (used for page 1).
+        double firstPageHeaderHeight = MeasureElementHeight(
+            GetHeaderForPage(document, 1), pageWidth, 0, 0);
+        double firstPageFooterHeight = MeasureElementHeight(
+            GetFooterForPage(document, 1), pageWidth, 0, 0);
+        double firstPageContentHeight = contentHeight - (firstPageHeaderHeight + firstPageFooterHeight);
+
+        if (defaultContentHeight <= 0 || firstPageContentHeight <= 0)
+        {
+            // Header/footer consume all available space. Create a single blank page.
+            pdfDoc.AddPage();
+            pdfDoc.Save(stream);
+            return;
+        }
+
         // Split the document children into page groups at PageBreak elements.
         var pageGroups = SplitByPageBreaks(document.Children);
 
         if (pageGroups.Count == 0)
         {
-            // No content. Create a single blank page.
+            // No content. Create a single blank page with header/footer.
             var blankPage = pdfDoc.AddPage();
             SetPageSize(blankPage, pageWidth, pageHeight);
+
+            using (var gfx = XGraphics.FromPdfPage(blankPage))
+            {
+                var sb0 = pdfDoc._uaManager?.StructureBuilder;
+                var ctx = new RenderContext(gfx, 1, 1, pdfDoc.Conformance, sb0);
+                RenderHeaderFooter(GetHeaderForPage(document, 1), ctx,
+                    0, 0, pageWidth);
+                RenderHeaderFooter(GetFooterForPage(document, 1), ctx,
+                    0, pageHeight - firstPageFooterHeight, pageWidth);
+            }
+
             RenderWatermarkIfPresent(pdfDoc, document, blankPage);
             pdfDoc.Save(stream);
             return;
         }
 
         // Counting pass: determine total pages if {pages} token is used.
-        bool needsTotalPages = HasTotalPagesToken(document.Children);
+        // Check both body content and header/footer elements for the token.
+        bool needsTotalPages = HasTotalPagesToken(document.Children)
+            || HasTotalPagesTokenInElement(document.Header)
+            || HasTotalPagesTokenInElement(document.Footer)
+            || HasTotalPagesTokenInElement(document.FirstPageHeader)
+            || HasTotalPagesTokenInElement(document.FirstPageFooter);
         int totalPages = needsTotalPages
-            ? CountPages(document, contentWidth, contentHeight)
+            ? CountPages(document, contentWidth, defaultContentHeight, headerHeight,
+                firstPageContentHeight, firstPageHeaderHeight)
             : 0;
 
         int currentPageNumber = 0;
+        double bodyMarginTop = document.Margins.Top + headerHeight;
 
         // Render pages one at a time instead of collecting closures for all pages.
         foreach (var group in pageGroups)
         {
             if (group.Count == 0)
             {
-                // Blank page from consecutive PageBreaks.
+                // Blank page from consecutive PageBreaks — render header/footer.
                 currentPageNumber++;
                 var blankPage = pdfDoc.AddPage();
                 SetPageSize(blankPage, pageWidth, pageHeight);
+
+                // Determine the actual footer height for this page.
+                double actualFooterHeight = (currentPageNumber == 1) ? firstPageFooterHeight : footerHeight;
+
+                using (var gfx = XGraphics.FromPdfPage(blankPage))
+                {
+                    var sbBlank = pdfDoc._uaManager?.StructureBuilder;
+                    var ctx = new RenderContext(gfx, currentPageNumber, totalPages, pdfDoc.Conformance, sbBlank);
+                    RenderHeaderFooter(GetHeaderForPage(document, currentPageNumber), ctx,
+                        0, 0, pageWidth);
+                    RenderHeaderFooter(GetFooterForPage(document, currentPageNumber), ctx,
+                        0, pageHeight - actualFooterHeight, pageWidth);
+                }
+
+                if (pdfDoc._uaManager != null)
+                    RenderWatermarkIfPresent(pdfDoc, document, blankPage);
+
                 MarkPageContentForRelease(blankPage);
                 continue;
             }
@@ -267,12 +379,13 @@ public static class DocumentRenderer
             var wrapper = new Column(group);
             var rootNode = LayoutEngine.Calculate(
                 wrapper, contentWidth, 1e6,
-                document.Margins.Left, document.Margins.Top);
+                document.Margins.Left, bodyMarginTop);
 
             // Render pages for this group immediately, one at a time.
             RenderGroupStreaming(pdfDoc, document, rootNode, pageWidth, pageHeight,
-                contentWidth, contentHeight, ref currentPageNumber,
-                needsTotalPages ? totalPages : 0);
+                contentWidth, defaultContentHeight, headerHeight, footerHeight,
+                ref currentPageNumber, needsTotalPages ? totalPages : 0,
+                firstPageContentHeight, firstPageHeaderHeight, firstPageFooterHeight);
         }
 
         // For non-PDF/UA documents, render watermarks in a final pass.
@@ -323,6 +436,18 @@ public static class DocumentRenderer
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Checks whether a single element (or its children) contains the <c>{pages}</c> token.
+    /// Used to scan header/footer elements that are not part of the document body list.
+    /// </summary>
+    /// <param name="element">The element to inspect, or null.</param>
+    /// <returns><c>true</c> if any text block in the element tree contains the <c>{pages}</c> token.</returns>
+    internal static bool HasTotalPagesTokenInElement(Element? element)
+    {
+        if (element == null) return false;
+        return HasTotalPagesToken(new[] { element });
     }
 
     #endregion Internal Methods
@@ -433,17 +558,43 @@ public static class DocumentRenderer
     /// <param name="document">The PdfFlex document for page size and margin info.</param>
     /// <param name="rootNode">The root Column layout node with unlimited-height layout.</param>
     /// <param name="contentWidth">The content area width (page minus horizontal margins).</param>
-    /// <param name="contentHeight">The content area height (page minus vertical margins).</param>
+    /// <param name="contentHeight">The content area height for pages 2+ (minus default header/footer).</param>
+    /// <param name="docHeaderHeight">The default document header height in points.</param>
+    /// <param name="docFooterHeight">The default document footer height in points.</param>
+    /// <param name="firstPageContentHeight">The content area height for page 1 (minus first-page header/footer). When 0, uses <paramref name="contentHeight"/>.</param>
+    /// <param name="firstPageHeaderHeight">The first-page header height in points.</param>
+    /// <param name="startingPageIndex">The absolute page index (0-based) at which this group starts in the document.</param>
     /// <returns>A list of pages, each containing a list of render actions.</returns>
     private static List<List<Action<RenderContext>>> PaginateGroup(
         Document document,
         LayoutNode rootNode,
         double contentWidth,
-        double contentHeight)
+        double contentHeight,
+        double docHeaderHeight = 0,
+        double docFooterHeight = 0,
+        double firstPageContentHeight = 0,
+        double firstPageHeaderHeight = 0,
+        int startingPageIndex = 0)
     {
         double marginLeft = document.Margins.Left;
-        double marginTop = document.Margins.Top;
-        double pageBottom = marginTop + contentHeight;
+
+        // Determine initial margins based on whether this group starts on page 1.
+        double marginTop;
+        double pageBottom;
+        if (startingPageIndex == 0 && firstPageContentHeight > 0)
+        {
+            marginTop = document.Margins.Top + firstPageHeaderHeight;
+            pageBottom = marginTop + firstPageContentHeight;
+        }
+        else
+        {
+            marginTop = document.Margins.Top + docHeaderHeight;
+            pageBottom = marginTop + contentHeight;
+        }
+
+        // Default margins used for pages 2+ within this group.
+        double defaultMarginTop = document.Margins.Top + docHeaderHeight;
+        double defaultPageBottom = defaultMarginTop + contentHeight;
 
         // Collect page assignments: each entry is a list of render actions for that page.
         var pages = new List<List<Action<RenderContext>>>();
@@ -463,7 +614,14 @@ public static class DocumentRenderer
             if (childElement is Table table)
             {
                 PaginateTable(table, childNode, marginLeft, contentWidth,
-                    ref cursorY, pageBottom, marginTop, pages, ref currentPageIndex);
+                    ref cursorY, pageBottom, marginTop, pages, ref currentPageIndex,
+                    defaultPageBottom, defaultMarginTop);
+                // After table pagination, switch to default margins if we moved past page 1.
+                if (startingPageIndex + currentPageIndex > 0)
+                {
+                    marginTop = defaultMarginTop;
+                    pageBottom = defaultPageBottom;
+                }
                 continue;
             }
 
@@ -475,6 +633,10 @@ public static class DocumentRenderer
                 currentPageIndex++;
                 if (currentPageIndex >= pages.Count)
                     pages.Add(new List<Action<RenderContext>>());
+
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
             }
 
@@ -517,6 +679,8 @@ public static class DocumentRenderer
     /// <param name="marginTop">The top margin offset.</param>
     /// <param name="pages">The list of page render action lists.</param>
     /// <param name="currentPageIndex">The current page index (updated on return).</param>
+    /// <param name="defaultPageBottom">The default page bottom for pages 2+ (0 = use <paramref name="pageBottom"/>).</param>
+    /// <param name="defaultMarginTop">The default margin top for pages 2+ (0 = use <paramref name="marginTop"/>).</param>
     private static void PaginateTable(
         Table table,
         LayoutNode tableNode,
@@ -526,8 +690,14 @@ public static class DocumentRenderer
         double pageBottom,
         double marginTop,
         List<List<Action<RenderContext>>> pages,
-        ref int currentPageIndex)
+        ref int currentPageIndex,
+        double defaultPageBottom = 0,
+        double defaultMarginTop = 0)
     {
+        // When default values are not provided, use the current page values.
+        if (defaultPageBottom == 0) defaultPageBottom = pageBottom;
+        if (defaultMarginTop == 0) defaultMarginTop = marginTop;
+
         double dataRowHeight = TableRenderer.GetRowHeight(table);
         double headerHeight = TableRenderer.GetHeaderRowHeight(table);
         double footerHeight = table.FooterRow != null ? TableRenderer.GetFooterRowHeight(table) : 0;
@@ -564,6 +734,10 @@ public static class DocumentRenderer
                 currentPageIndex++;
                 if (currentPageIndex >= pages.Count)
                     pages.Add(new List<Action<RenderContext>>());
+
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
                 continue; // Re-evaluate with full page space.
             }
@@ -630,6 +804,10 @@ public static class DocumentRenderer
                 currentPageIndex++;
                 if (currentPageIndex >= pages.Count)
                     pages.Add(new List<Action<RenderContext>>());
+
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
             }
         }
@@ -737,50 +915,84 @@ public static class DocumentRenderer
     /// </summary>
     /// <param name="document">The document to count pages for.</param>
     /// <param name="contentWidth">The content area width (page minus horizontal margins).</param>
-    /// <param name="contentHeight">The content area height (page minus vertical margins).</param>
+    /// <param name="contentHeight">The content area height for pages 2+ (minus default header/footer).</param>
+    /// <param name="headerHeight">The default header height in points (already measured by caller).</param>
+    /// <param name="firstPageContentHeight">The content area height for page 1. When 0, uses <paramref name="contentHeight"/>.</param>
+    /// <param name="firstPageHeaderHeight">The first-page header height in points.</param>
     /// <returns>The total number of pages.</returns>
-    private static int CountPages(Document document, double contentWidth, double contentHeight)
+    private static int CountPages(
+        Document document,
+        double contentWidth,
+        double contentHeight,
+        double headerHeight,
+        double firstPageContentHeight = 0,
+        double firstPageHeaderHeight = 0)
     {
+        double bodyMarginTop = document.Margins.Top + headerHeight;
+
         var pageGroups = SplitByPageBreaks(document.Children);
         if (pageGroups.Count == 0)
             return 1;
 
-        int totalPages = 0;
+        int absolutePageIdx = 0;
 
         foreach (var group in pageGroups)
         {
             if (group.Count == 0)
             {
-                totalPages++; // Blank page from consecutive PageBreaks.
+                absolutePageIdx++; // Blank page from consecutive PageBreaks.
                 continue;
             }
 
             var wrapper = new Column(group);
             var rootNode = LayoutEngine.Calculate(
                 wrapper, contentWidth, 1e6,
-                document.Margins.Left, document.Margins.Top);
+                document.Margins.Left, bodyMarginTop);
 
-            totalPages += CountPagesInGroup(document, rootNode, contentHeight);
+            absolutePageIdx += CountPagesInGroup(bodyMarginTop, rootNode, contentHeight,
+                firstPageContentHeight, firstPageHeaderHeight,
+                document.Margins.Top, absolutePageIdx);
         }
 
-        return Math.Max(totalPages, 1);
+        return Math.Max(absolutePageIdx, 1);
     }
 
     /// <summary>
     /// Counts the number of pages a single layout group would produce.
     /// Mirrors the pagination logic of <see cref="PaginateGroup"/> without rendering.
     /// </summary>
-    /// <param name="document">The document for margin information.</param>
+    /// <param name="defaultMarginTop">The effective top margin for pages 2+ (includes default header height).</param>
     /// <param name="rootNode">The root Column layout node.</param>
-    /// <param name="contentHeight">The content area height per page.</param>
+    /// <param name="contentHeight">The content area height for pages 2+ (minus default header/footer).</param>
+    /// <param name="firstPageContentHeight">The content area height for page 1. When 0, uses <paramref name="contentHeight"/>.</param>
+    /// <param name="firstPageHeaderHeight">The first-page header height in points.</param>
+    /// <param name="rawMarginTop">The raw top margin (without header height) for computing first-page margin.</param>
+    /// <param name="startingPageIndex">The absolute page index (0-based) at which this group starts.</param>
     /// <returns>The number of pages for this group.</returns>
     private static int CountPagesInGroup(
-        Document document,
+        double defaultMarginTop,
         LayoutNode rootNode,
-        double contentHeight)
+        double contentHeight,
+        double firstPageContentHeight = 0,
+        double firstPageHeaderHeight = 0,
+        double rawMarginTop = 0,
+        int startingPageIndex = 0)
     {
-        double marginTop = document.Margins.Top;
-        double pageBottom = marginTop + contentHeight;
+        // Determine initial margins based on whether this group starts on page 1.
+        double marginTop;
+        double pageBottom;
+        if (startingPageIndex == 0 && firstPageContentHeight > 0)
+        {
+            marginTop = rawMarginTop + firstPageHeaderHeight;
+            pageBottom = marginTop + firstPageContentHeight;
+        }
+        else
+        {
+            marginTop = defaultMarginTop;
+            pageBottom = defaultMarginTop + contentHeight;
+        }
+
+        double defaultPageBottom = defaultMarginTop + contentHeight;
 
         int pageCount = 1;
         double cursorY = marginTop;
@@ -793,13 +1005,23 @@ public static class DocumentRenderer
 
             if (childElement is Table table)
             {
-                CountTablePages(table, ref cursorY, pageBottom, marginTop, ref pageCount);
+                CountTablePages(table, ref cursorY, pageBottom, marginTop, ref pageCount,
+                    defaultPageBottom, defaultMarginTop);
+                // After table pagination, switch to default margins if we moved past page 1.
+                if (startingPageIndex + pageCount - 1 > 0)
+                {
+                    marginTop = defaultMarginTop;
+                    pageBottom = defaultPageBottom;
+                }
                 continue;
             }
 
             if (cursorY + childHeight > pageBottom + 0.5 && cursorY > marginTop + 0.5)
             {
                 pageCount++;
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
             }
 
@@ -823,13 +1045,21 @@ public static class DocumentRenderer
     /// <param name="pageBottom">The Y coordinate of the bottom of the content area.</param>
     /// <param name="marginTop">The top margin offset.</param>
     /// <param name="pageCount">The running page count (updated on return).</param>
+    /// <param name="defaultPageBottom">The default page bottom for pages 2+ (0 = use <paramref name="pageBottom"/>).</param>
+    /// <param name="defaultMarginTop">The default margin top for pages 2+ (0 = use <paramref name="marginTop"/>).</param>
     private static void CountTablePages(
         Table table,
         ref double cursorY,
         double pageBottom,
         double marginTop,
-        ref int pageCount)
+        ref int pageCount,
+        double defaultPageBottom = 0,
+        double defaultMarginTop = 0)
     {
+        // When default values are not provided, use the current page values.
+        if (defaultPageBottom == 0) defaultPageBottom = pageBottom;
+        if (defaultMarginTop == 0) defaultMarginTop = marginTop;
+
         double dataRowHeight = TableRenderer.GetRowHeight(table);
         double headerHeight = TableRenderer.GetHeaderRowHeight(table);
         double footerHeight = table.FooterRow != null ? TableRenderer.GetFooterRowHeight(table) : 0;
@@ -855,6 +1085,9 @@ public static class DocumentRenderer
             if (rowsThatFit < table.MinRowsBeforeBreak && cursorY > marginTop + 0.5)
             {
                 pageCount++;
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
                 continue;
             }
@@ -890,6 +1123,9 @@ public static class DocumentRenderer
             if (currentRow < totalDataRows)
             {
                 pageCount++;
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
             }
         }
@@ -911,9 +1147,14 @@ public static class DocumentRenderer
     /// <param name="pageWidth">The page width in points.</param>
     /// <param name="pageHeight">The page height in points.</param>
     /// <param name="contentWidth">The content area width.</param>
-    /// <param name="contentHeight">The content area height.</param>
+    /// <param name="contentHeight">The content area height for pages 2+ (minus default header/footer).</param>
+    /// <param name="docHeaderHeight">The default document header height in points.</param>
+    /// <param name="docFooterHeight">The default document footer height in points.</param>
     /// <param name="currentPageNumber">The current page number (updated on return).</param>
     /// <param name="totalPages">The total number of pages (0 if unknown).</param>
+    /// <param name="firstPageContentHeight">The content area height for page 1. When 0, uses <paramref name="contentHeight"/>.</param>
+    /// <param name="firstPageHeaderHeight">The first-page header height in points.</param>
+    /// <param name="firstPageFooterHeight">The first-page footer height in points.</param>
     private static void RenderGroupStreaming(
         PdfDocument pdfDoc,
         Document document,
@@ -922,11 +1163,31 @@ public static class DocumentRenderer
         double pageHeight,
         double contentWidth,
         double contentHeight,
+        double docHeaderHeight,
+        double docFooterHeight,
         ref int currentPageNumber,
-        int totalPages)
+        int totalPages,
+        double firstPageContentHeight = 0,
+        double firstPageHeaderHeight = 0,
+        double firstPageFooterHeight = 0)
     {
-        double marginTop = document.Margins.Top;
-        double pageBottom = marginTop + contentHeight;
+        // Default margins for pages 2+.
+        double defaultMarginTop = document.Margins.Top + docHeaderHeight;
+        double defaultPageBottom = defaultMarginTop + contentHeight;
+
+        // Determine initial margins based on whether this group starts on page 1.
+        double marginTop;
+        double pageBottom;
+        if (currentPageNumber == 0 && firstPageContentHeight > 0)
+        {
+            marginTop = document.Margins.Top + firstPageHeaderHeight;
+            pageBottom = marginTop + firstPageContentHeight;
+        }
+        else
+        {
+            marginTop = defaultMarginTop;
+            pageBottom = defaultPageBottom;
+        }
 
         var currentPageActions = new List<Action<RenderContext>>();
         double cursorY = marginTop;
@@ -941,12 +1202,21 @@ public static class DocumentRenderer
             var pdfPage = pdfDoc.AddPage();
             SetPageSize(pdfPage, pageWidth, pageHeight);
 
+            // Determine the actual footer height for this page.
+            double actualFooterHeight = (pageNumber == 1) ? firstPageFooterHeight : docFooterHeight;
+
             using (var gfx = XGraphics.FromPdfPage(pdfPage))
             {
                 var ctx = new RenderContext(gfx, pageNumber, totalPages, pdfDoc.Conformance, sb);
 
                 foreach (var action in currentPageActions)
                     action(ctx);
+
+                // Render header and footer at full page width, edge to edge.
+                RenderHeaderFooter(GetHeaderForPage(document, pageNumber), ctx,
+                    0, 0, pageWidth);
+                RenderHeaderFooter(GetFooterForPage(document, pageNumber), ctx,
+                    0, pageHeight - actualFooterHeight, pageWidth);
             }
 
             // Render watermark per-page when UAManager is active (it rejects
@@ -968,7 +1238,14 @@ public static class DocumentRenderer
             if (childElement is Table table)
             {
                 PaginateTableStreaming(table, childNode, document.Margins.Left, contentWidth,
-                    ref cursorY, pageBottom, marginTop, currentPageActions, FlushPage);
+                    ref cursorY, pageBottom, marginTop, currentPageActions, FlushPage,
+                    defaultPageBottom, defaultMarginTop);
+                // After table pagination, switch to default margins if we moved past page 1.
+                if (pageNumber > 0)
+                {
+                    marginTop = defaultMarginTop;
+                    pageBottom = defaultPageBottom;
+                }
                 continue;
             }
 
@@ -976,6 +1253,9 @@ public static class DocumentRenderer
             if (cursorY + childHeight > pageBottom + 0.5 && cursorY > marginTop + 0.5)
             {
                 FlushPage();
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
             }
 
@@ -1025,6 +1305,8 @@ public static class DocumentRenderer
     /// <param name="marginTop">The top margin offset.</param>
     /// <param name="currentPageActions">The render actions for the current page.</param>
     /// <param name="flushPage">Delegate that flushes the current page and starts a new one.</param>
+    /// <param name="defaultPageBottom">The default page bottom for pages 2+ (0 = use <paramref name="pageBottom"/>).</param>
+    /// <param name="defaultMarginTop">The default margin top for pages 2+ (0 = use <paramref name="marginTop"/>).</param>
     private static void PaginateTableStreaming(
         Table table,
         LayoutNode tableNode,
@@ -1034,8 +1316,13 @@ public static class DocumentRenderer
         double pageBottom,
         double marginTop,
         List<Action<RenderContext>> currentPageActions,
-        Action flushPage)
+        Action flushPage,
+        double defaultPageBottom = 0,
+        double defaultMarginTop = 0)
     {
+        // When default values are not provided, use the current page values.
+        if (defaultPageBottom == 0) defaultPageBottom = pageBottom;
+        if (defaultMarginTop == 0) defaultMarginTop = marginTop;
         double dataRowHeight = TableRenderer.GetRowHeight(table);
         double headerHeight = TableRenderer.GetHeaderRowHeight(table);
         double footerHeight = table.FooterRow != null ? TableRenderer.GetFooterRowHeight(table) : 0;
@@ -1070,6 +1357,9 @@ public static class DocumentRenderer
             if (rowsThatFit < table.MinRowsBeforeBreak && cursorY > marginTop + 0.5)
             {
                 flushPage();
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
                 continue; // Re-evaluate with full page space.
             }
@@ -1134,6 +1424,9 @@ public static class DocumentRenderer
             if (currentRow < totalDataRows)
             {
                 flushPage();
+                // After page 1, always use default margins.
+                marginTop = defaultMarginTop;
+                pageBottom = defaultPageBottom;
                 cursorY = marginTop;
             }
         }
@@ -1230,6 +1523,137 @@ public static class DocumentRenderer
                 ValidateAltText(container.Children);
             }
         }
+    }
+
+    /// <summary>
+    /// Validates that document headers and footers do not contain disallowed element types.
+    /// <see cref="PageBreak"/> and <see cref="Table"/> elements are not permitted in
+    /// headers or footers (including recursively within containers).
+    /// </summary>
+    /// <param name="document">The document to validate.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when a header or footer contains a disallowed element type.
+    /// </exception>
+    private static void ValidateHeaderFooter(Document document)
+    {
+        ValidateHeaderFooterElement(document.Header, "Header");
+        ValidateHeaderFooterElement(document.Footer, "Footer");
+        ValidateHeaderFooterElement(document.FirstPageHeader, "FirstPageHeader");
+        ValidateHeaderFooterElement(document.FirstPageFooter, "FirstPageFooter");
+    }
+
+    /// <summary>
+    /// Recursively validates that an element tree does not contain disallowed types
+    /// for use in a header or footer.
+    /// </summary>
+    /// <param name="element">The element to validate, or null.</param>
+    /// <param name="location">The name of the header/footer property for error messages.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the element or any of its descendants is a <see cref="PageBreak"/> or <see cref="Table"/>.
+    /// </exception>
+    private static void ValidateHeaderFooterElement(Element? element, string location)
+    {
+        if (element == null) return;
+
+        if (element is PageBreak)
+        {
+            throw new InvalidOperationException(
+                $"PageBreak is not allowed in Document.{location}. " +
+                "Headers and footers cannot contain page break elements.");
+        }
+
+        if (element is Table)
+        {
+            throw new InvalidOperationException(
+                $"Table is not allowed in Document.{location}. " +
+                "Headers and footers cannot contain table elements.");
+        }
+
+        if (element is Container container)
+        {
+            foreach (var child in container.Children)
+            {
+                ValidateHeaderFooterElement(child, location);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Measures the height of an element by running it through the layout engine.
+    /// Returns 0 when the element is null. Wraps the element in a Column and measures
+    /// the actual content height (sum of children) rather than the Column's resolved height,
+    /// which would expand to fill the available space.
+    /// </summary>
+    /// <param name="element">The element to measure, or null.</param>
+    /// <param name="contentWidth">The available content width.</param>
+    /// <param name="marginLeft">The left margin offset.</param>
+    /// <param name="marginTop">The top margin offset.</param>
+    /// <returns>The measured height in points, or 0 if the element is null.</returns>
+    private static double MeasureElementHeight(
+        Element? element, double contentWidth, double marginLeft, double marginTop)
+    {
+        if (element == null) return 0;
+        var wrapper = new Column(new List<Element> { element });
+        var node = LayoutEngine.Calculate(wrapper, contentWidth, 1e6, marginLeft, marginTop);
+
+        // The Column container fills available height (1e6), but we need the actual
+        // content height. Sum children heights to get the true measurement.
+        double totalHeight = 0;
+        foreach (var child in node.Children)
+            totalHeight += child.Height;
+        return totalHeight;
+    }
+
+    /// <summary>
+    /// Renders a header or footer element on a page at the specified position.
+    /// Wraps the element in a PDF/UA Artifact tag when structure tagging is active.
+    /// </summary>
+    /// <param name="element">The header or footer element to render, or null.</param>
+    /// <param name="ctx">The render context for the current page.</param>
+    /// <param name="x">The left X position for the header/footer.</param>
+    /// <param name="y">The top Y position for the header/footer.</param>
+    /// <param name="width">The available width for the header/footer.</param>
+    private static void RenderHeaderFooter(
+        Element? element, RenderContext ctx, double x, double y, double width)
+    {
+        if (element == null) return;
+        var wrapper = new Column(new List<Element> { element });
+        var node = LayoutEngine.Calculate(wrapper, width, 1e6, x, y);
+
+        var sb = ctx.StructureBuilder;
+        if (sb != null) sb.BeginArtifact();
+        RenderNode(ctx, node);
+        if (sb != null) sb.End();
+    }
+
+    /// <summary>
+    /// Returns the appropriate header element for a given page number.
+    /// Page 1 uses <see cref="Document.FirstPageHeader"/> when set, otherwise falls back
+    /// to <see cref="Document.Header"/>.
+    /// </summary>
+    /// <param name="document">The document containing header definitions.</param>
+    /// <param name="pageNumber">The 1-based page number.</param>
+    /// <returns>The header element for the page, or null.</returns>
+    private static Element? GetHeaderForPage(Document document, int pageNumber)
+    {
+        if (pageNumber == 1 && document.FirstPageHeader != null)
+            return document.FirstPageHeader;
+        return document.Header;
+    }
+
+    /// <summary>
+    /// Returns the appropriate footer element for a given page number.
+    /// Page 1 uses <see cref="Document.FirstPageFooter"/> when set, otherwise falls back
+    /// to <see cref="Document.Footer"/>.
+    /// </summary>
+    /// <param name="document">The document containing footer definitions.</param>
+    /// <param name="pageNumber">The 1-based page number.</param>
+    /// <returns>The footer element for the page, or null.</returns>
+    private static Element? GetFooterForPage(Document document, int pageNumber)
+    {
+        if (pageNumber == 1 && document.FirstPageFooter != null)
+            return document.FirstPageFooter;
+        return document.Footer;
     }
 
     #endregion Private Methods
