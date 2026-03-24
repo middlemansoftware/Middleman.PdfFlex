@@ -66,6 +66,15 @@ The output PDF has a complete structure tree (/H1, /P, /Figure with alt text), d
 doc.Conformance = PdfConformance.PdfA2a.With(PdfConformance.PdfUA1);
 ```
 
+## Examples
+
+| Example | Source | PDF |
+|:--------|:-------|:----|
+| Invoice | [Program.cs](examples/Invoice/Program.cs) | [Acme-Invoice.pdf](examples/Invoice/Acme-Invoice.pdf) |
+| User Manual | [Program.cs](examples/UserManual/Program.cs) | [Acme-UserManual.pdf](examples/UserManual/Acme-UserManual.pdf) |
+| Expense Report (interactive form) | [Program.cs](examples/Form/Program.cs) | [Acme-ExpenseReport.pdf](examples/Form/Acme-ExpenseReport.pdf) |
+| Expense Report (filled & flattened) | | [Acme-ExpenseReport-Filled.pdf](examples/Form/Acme-ExpenseReport-Filled.pdf) |
+
 ## PdfFlex vs. Other .NET PDF Libraries:
 
 | | PdfFlex | QuestPDF | PDFsharp | IronPDF | Aspose.PDF |
