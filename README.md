@@ -1,4 +1,4 @@
-# Middleman.PdfFlex
+![Middleman.PdfFlex](<Middleman.PdfFlexSocialPreviewWhiteText.png>)
 
 Declarative PDF layout engine for .NET. Flexbox layout, PDF/A and PDF/UA conformance, streaming output, pure managed C#.
 
