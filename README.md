@@ -70,10 +70,10 @@ doc.Conformance = PdfConformance.PdfA2a.With(PdfConformance.PdfUA1);
 
 | Example | Source | PDF |
 |:--------|:-------|:----|
-| Invoice | [Program.cs](examples/Invoice/Program.cs) | [Acme-Invoice.pdf](examples/Invoice/Acme-Invoice.pdf) |
-| User Manual | [Program.cs](examples/UserManual/Program.cs) | [Acme-UserManual.pdf](examples/UserManual/Acme-UserManual.pdf) |
-| Expense Report (interactive form) | [Program.cs](examples/Form/Program.cs) | [Acme-ExpenseReport.pdf](examples/Form/Acme-ExpenseReport.pdf) |
-| Expense Report (filled & flattened) | | [Acme-ExpenseReport-Filled.pdf](examples/Form/Acme-ExpenseReport-Filled.pdf) |
+| Invoice | [Program.cs](examples/Invoice/Program.cs) | [Acme-Invoice.pdf](https://github.com/middlemansoftware/Middleman.PdfFlex/raw/main/examples/Invoice/Acme-Invoice.pdf) |
+| User Manual | [Program.cs](examples/UserManual/Program.cs) | [Acme-UserManual.pdf](https://github.com/middlemansoftware/Middleman.PdfFlex/raw/main/examples/UserManual/Acme-UserManual.pdf) |
+| Expense Report (interactive form) | [Program.cs](examples/Form/Program.cs) | [Acme-ExpenseReport.pdf](https://github.com/middlemansoftware/Middleman.PdfFlex/raw/main/examples/Form/Acme-ExpenseReport.pdf) |
+| Expense Report (filled & flattened) | | [Acme-ExpenseReport-Filled.pdf](https://github.com/middlemansoftware/Middleman.PdfFlex/raw/main/examples/Form/Acme-ExpenseReport-Filled.pdf) |
 
 ## PdfFlex vs. Other .NET PDF Libraries:
 
