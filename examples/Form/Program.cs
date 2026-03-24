@@ -75,8 +75,8 @@ Console.WriteLine($"Filled (flattened): {Path.GetFullPath(filledPath)}");
 
 static Document BuildExpenseReport()
 {
-    var navy = Color.FromHex("#1a3c5e");
-    var accent = Color.FromHex("#2980b9");
+    var navy = Color.FromHex("#0f4c75");
+    var accent = Color.FromHex("#0f4c75");
     var medGray = Color.FromHex("#95a5a6");
     var lightGray = Color.FromHex("#ecf0f1");
     var darkText = Color.FromHex("#2c3e50");

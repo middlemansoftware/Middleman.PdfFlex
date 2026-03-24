@@ -12,8 +12,8 @@ using Middleman.PdfFlex.Styling;
 // heading hierarchy driving PDF outlines and TOC entries,
 // first-page header/footer suppression, and full-bleed footer.
 
-var brandBlue = Color.FromHex("#1a5276");
-var accentBlue = Color.FromHex("#2980b9");
+var brandBlue = Color.FromHex("#0f4c75");
+var accentBlue = Color.FromHex("#0f4c75");
 var medGray = Color.FromHex("#95a5a6");
 var darkText = Color.FromHex("#2c3e50");
 

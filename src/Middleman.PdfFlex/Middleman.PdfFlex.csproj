@@ -4,12 +4,15 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
     <RootNamespace>Middleman.PdfFlex</RootNamespace>
     <AssemblyName>Middleman.PdfFlex</AssemblyName>
     <Description>Declarative PDF layout engine with flexbox-inspired layout and built-in PDF generation. Pure managed C#, zero native dependencies.</Description>
     <Authors>Middleman Software, Inc.</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/middlemansoftware/Middleman.PdfFlex</PackageProjectUrl>
+    <ApplicationIcon>..\assets\Middleman.PdfFlex.ico</ApplicationIcon>
+    <PackageIcon>Middleman.PdfFlex.png</PackageIcon>
     <DefineConstants>CORE;STBSHARP_INTERNAL</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn>CS1591;CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS8765;CS8767;CS0162;CS0168;CS0219;CS0414;CS0652;CA2014</NoWarn>
@@ -21,6 +24,10 @@
     <EmbeddedResource Include="Pdf\Fonts\Bundled\NotoSans-Bold.ttf" LogicalName="Middleman.PdfFlex.Fonts.NotoSans-Bold.ttf" />
     <EmbeddedResource Include="Pdf\Fonts\Bundled\NotoSans-Italic.ttf" LogicalName="Middleman.PdfFlex.Fonts.NotoSans-Italic.ttf" />
     <EmbeddedResource Include="Pdf\Fonts\Bundled\NotoSans-BoldItalic.ttf" LogicalName="Middleman.PdfFlex.Fonts.NotoSans-BoldItalic.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\assets\Middleman.PdfFlex.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>

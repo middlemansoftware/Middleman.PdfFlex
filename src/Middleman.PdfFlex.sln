@@ -3,11 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Middleman.PdfFlex", "Middleman.PdfFlex\Middleman.PdfFlex.csproj", "{4F4058F5-3CB0-4A4C-9962-550B40936B07}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Middleman.PdfFlex", "src\Middleman.PdfFlex\Middleman.PdfFlex.csproj", "{4F4058F5-3CB0-4A4C-9962-550B40936B07}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Middleman.PdfFlex.Tests", "src\Middleman.PdfFlex.Tests\Middleman.PdfFlex.Tests.csproj", "{5DC08295-7939-4754-BF83-DCCEA21ECF0C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Middleman.PdfFlex.Tests", "Middleman.PdfFlex.Tests\Middleman.PdfFlex.Tests.csproj", "{5DC08295-7939-4754-BF83-DCCEA21ECF0C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -46,9 +44,5 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{4F4058F5-3CB0-4A4C-9962-550B40936B07} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
-		{5DC08295-7939-4754-BF83-DCCEA21ECF0C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

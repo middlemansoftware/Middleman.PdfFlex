@@ -11,8 +11,8 @@ using Middleman.PdfFlex.Styling;
 // watermarks, first-page header suppression, SVG logos, and full-bleed footer
 // with inset padding.
 
-var acmeBlue = Color.FromHex("#1a3c6e");
-var accentGold = Color.FromHex("#d4a843");
+var acmeBlue = Color.FromHex("#0f4c75");
+var accentGold = Color.FromHex("#faa41a");
 var lightBg = Color.FromHex("#f7f8fa");
 var borderGray = Color.FromHex("#d0d5dd");
 var subtleGray = Color.FromHex("#6b7280");
