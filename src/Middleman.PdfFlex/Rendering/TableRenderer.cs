@@ -87,13 +87,10 @@ internal static class TableRenderer
             if (cursorY + dataRowHeight > node.Y + node.Height + 0.5)
                 break;
 
-            bool isAlternate = rowIndex % 2 == 1;
-            var rowStyle = isAlternate && table.AlternateRowStyle != null
-                ? table.AlternateRowStyle
-                : table.RowStyle;
+            var row = table.Rows[rowIndex];
 
-            // Draw row background (Artifact).
-            var bgStyle = rowStyle ?? (isAlternate ? table.AlternateRowStyle : null);
+            var bgStyle = ResolveRowBackground(row, rowIndex, table);
+
             if (bgStyle?.Background != null)
             {
                 if (sb != null) sb.BeginArtifact();
@@ -102,8 +99,8 @@ internal static class TableRenderer
                 if (sb != null) sb.End();
             }
 
-            DrawRow(gfx, table, columnWidths, tableX, cursorY, dataRowHeight, dataCellPadding,
-                cellFont, cellBrush, isHeader: false, rowValues: table.Rows[rowIndex], sb: sb);
+            DrawDataRow(gfx, table, columnWidths, tableX, cursorY, dataRowHeight,
+                cellFont, cellBrush, dataCellPadding, row, sb);
 
             cursorY += dataRowHeight;
             rowCount++;
@@ -201,12 +198,10 @@ internal static class TableRenderer
 
         for (int rowIndex = startRow; rowIndex < endRow && rowIndex < table.Rows.Count; rowIndex++)
         {
-            bool isAlternate = rowIndex % 2 == 1;
-            var rowStyle = isAlternate && table.AlternateRowStyle != null
-                ? table.AlternateRowStyle
-                : table.RowStyle;
+            var row = table.Rows[rowIndex];
 
-            var bgStyle = rowStyle ?? (isAlternate ? table.AlternateRowStyle : null);
+            var bgStyle = ResolveRowBackground(row, rowIndex, table);
+
             if (bgStyle?.Background != null)
             {
                 if (sb != null) sb.BeginArtifact();
@@ -215,8 +210,8 @@ internal static class TableRenderer
                 if (sb != null) sb.End();
             }
 
-            DrawRow(gfx, table, columnWidths, x, cursorY, dataRowHeight, dataCellPadding,
-                cellFont, cellBrush, isHeader: false, rowValues: table.Rows[rowIndex], sb: sb);
+            DrawDataRow(gfx, table, columnWidths, x, cursorY, dataRowHeight,
+                cellFont, cellBrush, dataCellPadding, row, sb);
 
             cursorY += dataRowHeight;
         }
@@ -311,12 +306,36 @@ internal static class TableRenderer
     #region Private Methods
 
     /// <summary>
+    /// Resolves the background style for a data row. Per-row <see cref="TableRow.RowStyle"/>
+    /// overrides the table-level alternating row logic.
+    /// </summary>
+    private static Style? ResolveRowBackground(object row, int rowIndex, Table table)
+    {
+        if (row is TableRow tableRow && tableRow.RowStyle?.Background != null)
+            return tableRow.RowStyle;
+
+        bool isAlternate = rowIndex % 2 == 1;
+        return isAlternate && table.AlternateRowStyle != null
+            ? table.AlternateRowStyle
+            : table.RowStyle;
+    }
+
+    /// <summary>
     /// Resolves the horizontal cell padding from a style's padding, falling back to
     /// a default of 4pt when no padding is specified.
     /// </summary>
     private static double ResolveCellPadding(Style? style)
     {
         return style?.Padding?.Left ?? 4.0;
+    }
+
+    /// <summary>
+    /// Resolves the right-side cell padding from a style, falling back to the left padding
+    /// value for backward compatibility with symmetric padding usage.
+    /// </summary>
+    private static double ResolveCellPaddingRight(Style? style)
+    {
+        return style?.Padding?.Right ?? ResolveCellPadding(style);
     }
 
     /// <summary>
@@ -476,6 +495,124 @@ internal static class TableRenderer
             gfx.DrawString(cellText, font, brush, cellRect, format);
 
             if (sb != null) sb.End(); // TH or TD
+
+            cellX += columnWidths[col];
+        }
+
+        if (sb != null) sb.End(); // TR
+    }
+
+    /// <summary>
+    /// Draws a data row, handling both legacy <c>object[]</c> rows and typed
+    /// <see cref="TableRow"/> rows with per-row and per-cell style overrides.
+    /// </summary>
+    private static void DrawDataRow(
+        XGraphics gfx,
+        Table table,
+        double[] columnWidths,
+        double rowX,
+        double rowY,
+        double rowHeight,
+        XFont defaultFont,
+        XSolidBrush defaultBrush,
+        double defaultCellPadding,
+        object row,
+        StructureBuilder? sb)
+    {
+        if (row is object[] values)
+        {
+            // Legacy path — no style overrides, delegate to existing DrawRow.
+            DrawRow(gfx, table, columnWidths, rowX, rowY, rowHeight, defaultCellPadding,
+                defaultFont, defaultBrush, isHeader: false, rowValues: values, sb: sb);
+            return;
+        }
+
+        if (row is not TableRow tableRow)
+        {
+            // Unknown row type — treat as single-cell legacy row.
+            DrawRow(gfx, table, columnWidths, rowX, rowY, rowHeight, defaultCellPadding,
+                defaultFont, defaultBrush, isHeader: false,
+                rowValues: new[] { row }, sb: sb);
+            return;
+        }
+
+        // Typed row — resolve row-level cell style cascade.
+        var rowCellStyle = tableRow.CellStyle ?? table.CellStyle;
+
+        // Build row-level font/brush/padding only when they differ from the table default.
+        XFont rowFont = defaultFont;
+        XSolidBrush rowBrush = defaultBrush;
+        double rowPadding = defaultCellPadding;
+
+        if (tableRow.CellStyle != null)
+        {
+            rowFont = CreateFontFromStyle(rowCellStyle);
+            var rowColor = rowCellStyle?.FontColor ?? Colors.Black;
+            rowBrush = new XSolidBrush(ColorConvert.ToXColor(rowColor));
+            rowPadding = ResolveCellPadding(rowCellStyle);
+        }
+
+        if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableRow);
+
+        double cellX = rowX;
+
+        for (int col = 0; col < table.Columns.Count; col++)
+        {
+            // Resolve cell content and style from the TableRow cells.
+            string cellText;
+            XFont cellFont;
+            XSolidBrush cellBrush;
+            double cellPaddingLeft;
+            double cellPaddingRight;
+
+            if (col < tableRow.Cells.Count)
+            {
+                var cell = tableRow.Cells[col];
+                cellText = cell.Content?.ToString() ?? string.Empty;
+
+                if (cell.Style != null)
+                {
+                    // Per-cell style overrides everything.
+                    var effectiveStyle = cell.Style;
+                    cellFont = CreateFontFromStyle(effectiveStyle);
+                    var cellColor = effectiveStyle.FontColor ?? rowCellStyle?.FontColor ?? Colors.Black;
+                    cellBrush = new XSolidBrush(ColorConvert.ToXColor(cellColor));
+                    cellPaddingLeft = ResolveCellPadding(effectiveStyle);
+                    cellPaddingRight = ResolveCellPaddingRight(effectiveStyle);
+                }
+                else
+                {
+                    // Fall through to row-level resolved font/brush/padding.
+                    cellFont = rowFont;
+                    cellBrush = rowBrush;
+                    cellPaddingLeft = rowPadding;
+                    cellPaddingRight = rowPadding;
+                }
+            }
+            else
+            {
+                // No cell data for this column — empty cell with row defaults.
+                cellText = string.Empty;
+                cellFont = rowFont;
+                cellBrush = rowBrush;
+                cellPaddingLeft = rowPadding;
+                cellPaddingRight = rowPadding;
+            }
+
+            var align = table.Columns[col].Align;
+            var format = MapTextAlign(align);
+
+            var cellRect = new XRect(
+                cellX + cellPaddingLeft,
+                rowY,
+                Math.Max(0, columnWidths[col] - cellPaddingLeft - cellPaddingRight),
+                rowHeight);
+
+            if (sb != null) sb.BeginElement(PdfBlockLevelElementTag.TableDataCell);
+
+            gfx.DrawString(cellText, cellFont, cellBrush, cellRect, format);
+
+            if (sb != null) sb.End(); // TD
 
             cellX += columnWidths[col];
         }

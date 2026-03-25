@@ -555,7 +555,13 @@ public static class DocumentRenderer
                     return true;
                 foreach (var row in table.Rows)
                 {
-                    if (HasTotalPagesTokenInRow(row))
+                    IEnumerable<object> cells = row switch
+                    {
+                        object[] arr => arr,
+                        TableRow tr => tr.Cells.Select(c => c.Content),
+                        _ => Array.Empty<object>()
+                    };
+                    if (HasTotalPagesTokenInRow(cells))
                         return true;
                 }
                 if (table.FooterRow != null && HasTotalPagesTokenInRow(table.FooterRow))
@@ -2265,7 +2271,13 @@ public static class DocumentRenderer
                 }
                 foreach (var row in table.Rows)
                 {
-                    foreach (var cell in row)
+                    IEnumerable<object> cells = row switch
+                    {
+                        object[] arr => arr,
+                        TableRow tr => tr.Cells.Select(c => c.Content),
+                        _ => Array.Empty<object>()
+                    };
+                    foreach (var cell in cells)
                     {
                         if (cell is string s && s.Contains("{page:", StringComparison.OrdinalIgnoreCase))
                             return true;
