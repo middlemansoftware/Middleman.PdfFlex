@@ -37,7 +37,7 @@
 
   <!-- Dev-time project reference; switch to NuGet package reference before 1.0 release -->
   <ItemGroup>
-    <ProjectReference Include="..\..\..\Middleman.Svg\src\Middleman.Svg\Middleman.Svg.csproj" />
+    <ProjectReference Include="..\..\lib\Middleman.Svg\src\Middleman.Svg\Middleman.Svg.csproj" />
   </ItemGroup>
 
 </Project>

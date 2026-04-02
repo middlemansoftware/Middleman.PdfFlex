@@ -1,0 +1,3 @@
+[submodule "lib/Middleman.Svg"]
+	path = lib/Middleman.Svg
+	url = https://github.com/middlemansoftware/Middleman.Svg
